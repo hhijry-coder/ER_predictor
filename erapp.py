@@ -94,14 +94,17 @@ def preprocess_data(X):
     X_processed = preprocessor.fit_transform(X)
 
     # Create a new dataframe with processed data
-    if len(categorical_features) > 0:
-        numeric_feature_names = numeric_features.tolist()
-        categorical_feature_names = preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(categorical_features).tolist()
-        feature_names = numeric_feature_names + categorical_feature_names
+    if isinstance(X_processed, np.ndarray):
+        if len(categorical_features) > 0:
+            numeric_feature_names = numeric_features.tolist()
+            categorical_feature_names = preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(categorical_features).tolist()
+            feature_names = numeric_feature_names + categorical_feature_names
+        else:
+            feature_names = numeric_features.tolist()
+        
+        X_processed_df = pd.DataFrame(X_processed, columns=feature_names, index=X.index)
     else:
-        feature_names = numeric_features.tolist()
-    
-    X_processed_df = pd.DataFrame(X_processed, columns=feature_names, index=X.index)
+        X_processed_df = pd.DataFrame.sparse.from_spmatrix(X_processed, columns=preprocessor.get_feature_names_out(), index=X.index)
 
     return X_processed_df, preprocessor
     
