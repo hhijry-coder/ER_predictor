@@ -27,22 +27,12 @@ pages = st.sidebar.radio("Select a page:", ["Data Upload", "Model Training", "Ev
 # Global variables for storing loaded data
 uploaded_data = None
 X_train, X_test, y_train, y_test = None, None, None, None
+scaler = None
+model = None
 
 # Paths for model and scaler (use appropriate path for Streamlit Cloud)
 scaler_path = os.path.join(os.path.dirname(__file__), 'scaler.joblib')
 model_path = os.path.join(os.path.dirname(__file__), 'best_model.h5')
-
-# Load Scaler and Model
-try:
-    scaler = joblib.load(scaler_path)
-except Exception as e:
-    st.error(f"Error loading scaler: {e}")
-
-try:
-    # Load the model and register the mse loss function
-    model = load_model(model_path, custom_objects={'mse': MeanSquaredError()})
-except Exception as e:
-    st.error(f"Error loading model: {e}")
 
 # Function to read CSV or XLSX
 def load_data(file):
@@ -70,7 +60,11 @@ def get_nearby_hospitals(lat, lon, radius=5000):
 def create_map(city_name, radius=5000):
     # Get location (lat/lon) from city name
     geolocator = Nominatim(user_agent="geoapi")
-    location = geolocator.geocode(city_name)
+    try:
+        location = geolocator.geocode(city_name, timeout=10)  # Increased timeout
+    except Exception as e:
+        st.error(f"Error geocoding city: {e}")
+        return None
     
     if location is None:
         st.error(f"City {city_name} not found. Please try another name.")
@@ -123,8 +117,13 @@ if pages == "Data Upload":
             
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
             
-            X_train_scaled = scaler.transform(X_train)
+            # Initialize and fit the scaler
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
             X_test_scaled = scaler.transform(X_test)
+
+            # Save the scaler
+            joblib.dump(scaler, scaler_path)
 
             st.success("Data processed and ready for training!")
 
@@ -132,7 +131,7 @@ if pages == "Data Upload":
 elif pages == "Model Training":
     st.title("Train Models")
     
-    if uploaded_data is not None:
+    if uploaded_data is not None and X_train is not None:
         model_type = st.sidebar.selectbox("Select Model", ["Traditional LSTM", "Advanced LSTM", "DNN"])
 
         # Display current model name
@@ -150,8 +149,15 @@ elif pages == "Model Training":
 elif pages == "Evaluation & Visualization":
     st.title("Model Evaluation & Visualization")
 
-    if X_test is not None:
+    if X_test is not None and scaler is not None:
         st.subheader("Model Performance")
+
+        # Load the model
+        try:
+            model = load_model(model_path, custom_objects={'mse': MeanSquaredError()})
+        except Exception as e:
+            st.error(f"Error loading model: {e}")
+            st.stop()
 
         # Predict with loaded model
         y_pred = model.predict(scaler.transform(X_test))
@@ -166,12 +172,12 @@ elif pages == "Evaluation & Visualization":
         st.write(f"**R2**: {r2:.2f}")
 
         # Plot Actual vs Predicted
-        fig = px.scatter(x=y_test, y=y_pred, labels={'x': 'Actual', 'y': 'Predicted'}, title="Actual vs Predicted")
+        fig = px.scatter(x=y_test, y=y_pred.flatten(), labels={'x': 'Actual', 'y': 'Predicted'}, title="Actual vs Predicted")
         st.plotly_chart(fig)
 
         # Plot Residuals
-        residuals = y_test - y_pred
-        fig_res = px.scatter(x=y_pred, y=residuals, labels={'x': 'Predicted', 'y': 'Residuals'}, title="Residuals")
+        residuals = y_test - y_pred.flatten()
+        fig_res = px.scatter(x=y_pred.flatten(), y=residuals, labels={'x': 'Predicted', 'y': 'Residuals'}, title="Residuals")
         st.plotly_chart(fig_res)
         
     else:
@@ -189,7 +195,8 @@ elif pages == "Interactive Map":
 
     # Search button
     if st.button("Find Hospitals"):
-        folium_map = create_map(city_name, radius)
+        with st.spinner("Searching for hospitals..."):
+            folium_map = create_map(city_name, radius)
         
         if folium_map:
             st.write(f"Showing hospitals near **{city_name}** within **{radius}** meters.")
