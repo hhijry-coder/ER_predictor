@@ -15,7 +15,7 @@ from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
 # Set style for seaborn plots
 sns.set_style("darkgrid")
-plt.style.use("seaborn")
+plt.style.use("sns")
 
 # Load the best model and scaler
 @st.cache_resource
