@@ -1,22 +1,26 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
+import matplotlib.pyplot as plt
+import seaborn as sns
 from tensorflow.keras.models import load_model
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 import joblib
-import folium
-from streamlit_folium import st_folium
-import requests
-import os
-import time
-from geopy.geocoders import Nominatim
-from geopy.exc import GeocoderTimedOut, GeocoderServiceError
-from requests.exceptions import RequestException
+import plotly.express as px
+from statsmodels.tsa.seasonal import seasonal_decompose
 
-# Paths for scaler and model
-scaler_path = 'scaler.joblib'
-model_path = 'best_model.h5'
+# Set style for seaborn plots
+sns.set_style("whitegrid")
+plt.style.use("seaborn-darkgrid")
+
+# Load the best model and scaler
+@st.cache_resource
+def load_model_and_scaler():
+    model = load_model('best_model.h5')
+    scaler = joblib.load('scaler.joblib')
+    return model, scaler
+
+model, scaler = load_model_and_scaler()
 
 # Function to read CSV or XLSX
 @st.cache_data
@@ -27,169 +31,186 @@ def load_data(file):
         return pd.read_excel(file)
     return None
 
-def convert_datetime_to_numeric(X):
-    X = X.copy()
-    for col in X.select_dtypes(include=['datetime64']).columns:
-        X[col] = X[col].astype(int) // 10**9
-    return X
+# Preprocessing function
+def preprocess_data(data):
+    data['Arrival time'] = pd.to_datetime(data['Arrival time'], format='%m/%d/%Y %H:%M')
+    data['timestamp'] = data['Arrival time']
+    data = data.sort_values('timestamp')
+    data = data.drop(['X1', 'X2'], axis=1)
+    return data
 
-# Function to get hospitals using OpenStreetMap (Overpass API)
+# Feature selection
+features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
+target = 'waitingTime'
+
+# Evaluation function
+def evaluate_model(y_true, y_pred, model_name):
+    mae = mean_absolute_error(y_true, y_pred)
+    mse = mean_squared_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    return mae, mse, r2
+
+# Plotting functions
+def plot_actual_vs_predicted(y_true, y_pred, model_name):
+    fig = px.scatter(x=y_true, y=y_pred, labels={'x': 'Actual Waiting Time', 'y': 'Predicted Waiting Time'},
+                     title=f'{model_name}: Actual vs Predicted')
+    fig.add_trace(px.line(x=y_true, y=y_true).data[0])
+    return fig
+
+def plot_time_series(actual, predicted, dates, model_name):
+    df = pd.DataFrame({'Date': dates, 'Actual': actual, 'Predicted': predicted})
+    df['Actual_Smooth'] = df['Actual'].rolling(window=24).mean()
+    df['Predicted_Smooth'] = df['Predicted'].rolling(window=24).mean()
+    
+    fig = px.line(df, x='Date', y=['Actual', 'Predicted', 'Actual_Smooth', 'Predicted_Smooth'],
+                  title=f'Time Series of Actual vs Predicted Waiting Times - {model_name}')
+    return fig
+
+def plot_residuals(y_true, y_pred, model_name):
+    residuals = y_true - y_pred
+    fig = px.scatter(x=y_pred, y=residuals, labels={'x': 'Predicted Values', 'y': 'Residuals'},
+                     title=f'Residual Analysis - {model_name}')
+    fig.add_hline(y=0, line_dash="dash", line_color="red")
+    return fig
+
+def plot_error_distribution(y_true, y_pred, model_name):
+    errors = y_true - y_pred
+    fig = px.histogram(errors, nbins=50, labels={'value': 'Error'},
+                       title=f'{model_name} Error Distribution')
+    return fig
+
+# New functions for the hospital map feature
+def get_location(city_name):
+    geolocator = Nominatim(user_agent="hospital_finder")
+    try:
+        location = geolocator.geocode(city_name)
+        if location:
+            return location.latitude, location.longitude
+        else:
+            return None
+    except (GeocoderTimedOut, GeocoderServiceError):
+        return None
+
 def get_nearby_hospitals(lat, lon, radius=5000):
     overpass_url = "http://overpass-api.de/api/interpreter"
     overpass_query = f"""
     [out:json];
-    node
-      [amenity=hospital]
-      (around:{radius},{lat},{lon});
+    node["amenity"="hospital"](around:{radius},{lat},{lon});
     out;
     """
     response = requests.get(overpass_url, params={'data': overpass_query})
     data = response.json()
     return data['elements']
 
-# Function to geocode with retry and caching
-@st.cache_data(ttl=3600)  # Cache results for 1 hour
-def geocode_with_retry(city_name, max_retries=3, initial_delay=1, backoff_factor=2):
-    geolocator = Nominatim(user_agent="geoapi")
-    
-    for attempt in range(max_retries):
-        try:
-            location = geolocator.geocode(city_name, timeout=10)
-            if location:
-                return location.latitude, location.longitude
-            else:
-                st.error(f"City {city_name} not found. Please try another name.")
-                return None
-        except (GeocoderTimedOut, GeocoderServiceError, RequestException) as e:
-            if attempt == max_retries - 1:
-                st.error(f"Error geocoding city after {max_retries} attempts: {e}")
-                return None
-            else:
-                delay = initial_delay * (backoff_factor ** attempt)
-                time.sleep(delay)
-    
-    return None
-
-# Function to create the folium map with hospitals
-def create_map(city_name, radius=5000):
-    location = geocode_with_retry(city_name)
-    
-    if location is None:
-        return None
-    
-    lat, lon = location
-
-    folium_map = folium.Map(location=[lat, lon], zoom_start=12)
-    hospitals = get_nearby_hospitals(lat, lon, radius)
-
-    for hospital in hospitals:
-        hospital_name = hospital.get('tags', {}).get('name', 'Unnamed Hospital')
-        folium.Marker(
-            location=[hospital['lat'], hospital['lon']],
-            popup=hospital_name,
-            icon=folium.Icon(color='red', icon='plus-sign')
-        ).add_to(folium_map)
-
-    return folium_map
-
-# Sidebar for Page Navigation
-st.sidebar.title("Navigation")
-pages = st.sidebar.radio("Select a page:", ["Data Upload", "Evaluation & Visualization", "Interactive Map"])
-
-# Global variables for storing loaded data
-uploaded_data = None
-X_test, y_test = None, None
-scaler = None
-model = None
-
-# Page 1: Data Upload
-if pages == "Data Upload":
-    st.title("Upload your Dataset")
-    
-    uploaded_file = st.file_uploader("Upload a CSV or XLSX file", type=['csv', 'xlsx'])
-    
-    if uploaded_file is not None:
-        uploaded_data = load_data(uploaded_file)
-        st.write("Data Preview:")
-        st.dataframe(uploaded_data.head())
+def create_hospital_map(city_name, radius=5000):
+    location = get_location(city_name)
+    if location:
+        lat, lon = location
+        hospitals = get_nearby_hospitals(lat, lon, radius)
         
-        st.write("Column Info:")
-        st.write(uploaded_data.describe())
-
-        # Sidebar to select target and features
-        st.sidebar.write("Select target column")
-        target_column = st.sidebar.selectbox("Target Column", uploaded_data.columns)
+        m = folium.Map(location=[lat, lon], zoom_start=12)
         
-        st.sidebar.write("Select feature columns")
-        feature_columns = st.sidebar.multiselect("Feature Columns", uploaded_data.columns, default=uploaded_data.columns[:-1].tolist())
-
-        if st.button("Process Data"):
-            # Preprocess Data
-            X = uploaded_data[feature_columns]
-            y = uploaded_data[target_column]
-            
-            X_test = convert_datetime_to_numeric(X)
-            y_test = y
-
-            # Load the scaler
-            scaler = joblib.load(scaler_path)
-
-            # Scale the data
-            X_test_scaled = scaler.transform(X_test)
-
-            st.session_state['X_test_scaled'] = X_test_scaled
-            st.session_state['y_test'] = y_test
-
-            st.success("Data processed and ready for evaluation!")
-
-# Page 2: Evaluation & Visualization
-elif pages == "Evaluation & Visualization":
-    st.title("Model Evaluation & Visualization")
-
-    if 'X_test_scaled' in st.session_state and 'y_test' in st.session_state:
-        st.subheader("Model Performance")
-
-        try:
-            model = load_model(model_path)
-        except Exception as e:
-            st.error(f"Error loading model: {e}")
-            st.stop()
-
-        # Predict with loaded model
-        y_pred = model.predict(st.session_state['X_test_scaled'])
+        for hospital in hospitals:
+            folium.Marker(
+                [hospital['lat'], hospital['lon']],
+                popup=hospital.get('tags', {}).get('name', 'Unknown Hospital'),
+                icon=folium.Icon(color='red', icon='plus-sign')
+            ).add_to(m)
         
-        # Calculate performance metrics
-        mae = mean_absolute_error(st.session_state['y_test'], y_pred)
-        mse = mean_squared_error(st.session_state['y_test'], y_pred)
-        r2 = r2_score(st.session_state['y_test'], y_pred)
-
-        st.write(f"**MAE**: {mae:.2f}")
-        st.write(f"**MSE**: {mse:.2f}")
-        st.write(f"**R2**: {r2:.2f}")
-
-        # Plot Actual vs Predicted
-        fig = px.scatter(x=st.session_state['y_test'], y=y_pred.flatten(), labels={'x': 'Actual', 'y': 'Predicted'}, title="Actual vs Predicted")
-        st.plotly_chart(fig)
-
-        # Plot Residuals
-        residuals = st.session_state['y_test'] - y_pred.flatten()
-        fig_res = px.scatter(x=y_pred.flatten(), y=residuals, labels={'x': 'Predicted', 'y': 'Residuals'}, title="Residuals")
-        st.plotly_chart(fig_res)
-        
+        return m
     else:
-        st.warning("Please upload and process data first on the 'Data Upload' page.")
+        return None
 
-# Page 3: Interactive Map
-elif pages == "Interactive Map":
-    st.title("Find Nearby Hospitals")
+# Streamlit app
+st.title('Waiting Time Prediction and Hospital Finder App')
 
-    city_name = st.text_input("Enter the name of the city or town", value="New York")
-    radius = st.slider("Select search radius (in meters)", min_value=1000, max_value=20000, step=1000, value=5000)
+# Sidebar for navigation
+page = st.sidebar.selectbox("Choose a page", ["Waiting Time Prediction", "Hospital Finder"])
 
-    if st.button("Find Hospitals"):
-        with st.spinner("Searching for hospitals..."):
-            folium_map = create_map(city_name, radius)
+if page == "Waiting Time Prediction":
+    st.header("Waiting Time Prediction")
+    
+    # File upload
+    uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx'])
+
+    if uploaded_file is not None:
+        data = load_data(uploaded_file)
+        data = preprocess_data(data)
         
-        if folium_map:
-            st.write(f"Showing hospitals near **{city_name}** within **{radius}** meters.")
-            st_folium(folium_map, width=700, height=500)
+        st.write("Data Preview:")
+        st.dataframe(data.head())
+        
+        # Feature selection and scaling
+        X = data[features]
+        y = data[target]
+        X_scaled = scaler.transform(X)
+        
+        # Make predictions
+        y_pred = model.predict(X_scaled).flatten()
+        
+        # Evaluate model
+        mae, mse, r2 = evaluate_model(y, y_pred, 'Best Model')
+        
+        st.write("Model Performance:")
+        st.write(f"MAE: {mae:.2f}")
+        st.write(f"MSE: {mse:.2f}")
+        st.write(f"R2: {r2:.2f}")
+        
+        # Visualizations
+        st.write("Actual vs Predicted Plot:")
+        fig_actual_vs_pred = plot_actual_vs_predicted(y, y_pred, 'Best Model')
+        st.plotly_chart(fig_actual_vs_pred)
+        
+        st.write("Time Series Plot:")
+        fig_time_series = plot_time_series(y, y_pred, data['timestamp'], 'Best Model')
+        st.plotly_chart(fig_time_series)
+        
+        st.write("Residual Analysis:")
+        fig_residuals = plot_residuals(y, y_pred, 'Best Model')
+        st.plotly_chart(fig_residuals)
+        
+        st.write("Error Distribution:")
+        fig_error_dist = plot_error_distribution(y, y_pred, 'Best Model')
+        st.plotly_chart(fig_error_dist)
+        
+        # Seasonal Decomposition
+        st.write("Seasonal Decomposition:")
+        ts = pd.Series(data['waitingTime'].values, index=data['timestamp'])
+        result = seasonal_decompose(ts, model='additive', period=24)
+        
+        fig, axes = plt.subplots(4, 1, figsize=(15, 20))
+        result.observed.plot(ax=axes[0])
+        axes[0].set_title('Observed')
+        result.trend.plot(ax=axes[1])
+        axes[1].set_title('Trend')
+        result.seasonal.plot(ax=axes[2])
+        axes[2].set_title('Seasonal')
+        result.resid.plot(ax=axes[3])
+        axes[3].set_title('Residual')
+        for ax in axes:
+            ax.set_xlabel('Date')
+            ax.set_ylabel('Waiting Time')
+        plt.tight_layout()
+        st.pyplot(fig)
+
+    else:
+        st.write("Please upload a CSV or Excel file to begin the analysis.")
+
+elif page == "Hospital Finder":
+    st.header("Hospital Finder")
+    
+    city_name = st.text_input("Enter a city or town name:")
+    radius = st.slider("Select search radius (in meters)", min_value=1000, max_value=10000, value=5000, step=1000)
+    
+    if st.button("Find Hospitals"):
+        if city_name:
+            with st.spinner("Searching for hospitals..."):
+                hospital_map = create_hospital_map(city_name, radius)
+            
+            if hospital_map:
+                st.success(f"Showing hospitals near {city_name} within a {radius}m radius")
+                folium_static(hospital_map)
+            else:
+                st.error("Unable to find the specified location. Please try another city or town name.")
+        else:
+            st.warning("Please enter a city or town name.")
