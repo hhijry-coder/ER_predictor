@@ -96,7 +96,7 @@ if page == "Waiting Time Prediction":
         else:
             st.write("Please upload a CSV or Excel file to begin the analysis.")
 
-elif page == "Hospital Finder"
+elif page == "Hospital Finder":
     st.header("Hospital Finder")
     
     city_name = st.text_input("Enter a city or town name:")
