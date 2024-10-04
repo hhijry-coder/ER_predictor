@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from tensorflow.keras.models import load_model
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
+from tensorflow.keras.metrics import mean_squared_error as mse
 import joblib
 import folium
 from streamlit_folium import folium_static
@@ -18,7 +19,9 @@ import os
 def load_model_and_scaler():
     try:
         if os.path.exists('best_model.h5'):
-            model = load_model('best_model.h5')
+            # Define custom objects
+            custom_objects = {'mse': mse}
+            model = load_model('best_model.h5', custom_objects=custom_objects)
         else:
             st.error("Model file 'best_model.h5' not found. Please ensure the file is in the correct location.")
             return None, None
@@ -32,11 +35,10 @@ def load_model_and_scaler():
         return model, scaler
     except Exception as e:
         st.error(f"Error loading model or scaler: {str(e)}")
+        st.error("If the error persists, you may need to retrain and save the model using the current version of Keras/TensorFlow.")
         return None, None
 
 model, scaler = load_model_and_scaler()
-
-# Rest of the code remains the same...
 
 # Streamlit app
 st.title('Waiting Time Prediction and Hospital Finder App')
