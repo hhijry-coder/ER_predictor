@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tensorflow.keras.models import load_model
 from tensorflow.keras.losses import MeanSquaredError
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, FunctionTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
