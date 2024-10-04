@@ -1,21 +1,16 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
 from tensorflow.keras.models import load_model
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 import joblib
-import plotly.express as px
 import folium
 from streamlit_folium import folium_static
 import requests
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
-
-# Set style for seaborn plots
-sns.set_style("darkgrid")
-plt.style.use("sns")
 
 # Load the best model and scaler
 @st.cache_resource
@@ -58,7 +53,7 @@ def evaluate_model(y_true, y_pred, model_name):
 def plot_actual_vs_predicted(y_true, y_pred, model_name):
     fig = px.scatter(x=y_true, y=y_pred, labels={'x': 'Actual Waiting Time', 'y': 'Predicted Waiting Time'},
                      title=f'{model_name}: Actual vs Predicted')
-    fig.add_trace(px.line(x=y_true, y=y_true).data[0])
+    fig.add_trace(go.Scatter(x=y_true, y=y_true, mode='lines', name='Ideal'))
     return fig
 
 def plot_time_series(actual, predicted, dates, model_name):
