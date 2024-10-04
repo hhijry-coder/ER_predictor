@@ -23,9 +23,13 @@ import time
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 from requests.exceptions import RequestException
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, FunctionTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, FunctionTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -91,8 +95,9 @@ def preprocess_data(X):
 
     # Create a new dataframe with processed data
     if len(categorical_features) > 0:
-        feature_names = (numeric_features.tolist() + 
-                         preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names(categorical_features).tolist())
+        numeric_feature_names = numeric_features.tolist()
+        categorical_feature_names = preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(categorical_features).tolist()
+        feature_names = numeric_feature_names + categorical_feature_names
     else:
         feature_names = numeric_features.tolist()
     
