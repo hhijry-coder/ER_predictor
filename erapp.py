@@ -12,6 +12,13 @@ import requests
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import os
+import tensorflow as tf
+from keras.saving import register_keras_serializable
+
+# Register the custom MSE function with Keras
+@register_keras_serializable()
+def mse(y_true, y_pred):
+    return tf.keras.losses.mean_squared_error(y_true, y_pred)
 
 # Load the best model and scaler
 @st.cache_resource
@@ -19,7 +26,9 @@ def load_model_and_scaler():
     try:
         # Load model with custom objects
         if os.path.exists('best_model.h5'):
-            model = load_model('best_model.h5')
+            # Registering custom objects during model load
+            custom_objects = {'mse': mse}
+            model = load_model('best_model.h5', custom_objects=custom_objects)
         else:
             st.error("Model file 'best_model.h5' not found. Please ensure the file is in the correct location.")
             return None, None
