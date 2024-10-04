@@ -33,6 +33,11 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, FunctionTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from scipy import sparse
 
 # Sidebar for Page Navigation
 st.sidebar.title("Navigation")
@@ -75,12 +80,12 @@ def preprocess_data(X):
     # Create preprocessing steps for each column type
     numeric_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='median')),
-        ('scaler', StandardScaler())
+        ('scaler', StandardScaler(with_mean=False))  # Use with_mean=False for sparse compatibility
     ])
 
     categorical_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
-        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse=False))  # Use sparse=False
     ])
 
     # Combine preprocessing steps
@@ -88,23 +93,18 @@ def preprocess_data(X):
         transformers=[
             ('num', numeric_transformer, numeric_features),
             ('cat', categorical_transformer, categorical_features)
-        ])
+        ],
+        sparse_threshold=0  # Always return dense array
+    )
 
     # Fit and transform the data
     X_processed = preprocessor.fit_transform(X)
 
     # Create a new dataframe with processed data
-    if isinstance(X_processed, np.ndarray):
-        if len(categorical_features) > 0:
-            numeric_feature_names = numeric_features.tolist()
-            categorical_feature_names = preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(categorical_features).tolist()
-            feature_names = numeric_feature_names + categorical_feature_names
-        else:
-            feature_names = numeric_features.tolist()
-        
-        X_processed_df = pd.DataFrame(X_processed, columns=feature_names, index=X.index)
-    else:
-        X_processed_df = pd.DataFrame.sparse.from_spmatrix(X_processed, columns=preprocessor.get_feature_names_out(), index=X.index)
+    feature_names = (numeric_features.tolist() + 
+                     preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(categorical_features).tolist())
+    
+    X_processed_df = pd.DataFrame(X_processed, columns=feature_names, index=X.index)
 
     return X_processed_df, preprocessor
     
