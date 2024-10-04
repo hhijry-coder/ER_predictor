@@ -6,11 +6,6 @@ import plotly.graph_objects as go
 from tensorflow.keras.models import load_model
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error as sklearn_mse
 import joblib
-import folium
-from streamlit_folium import folium_static
-import requests
-from geopy.geocoders import Nominatim
-from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import os
 import tensorflow as tf
 from keras.saving import register_keras_serializable
@@ -24,19 +19,17 @@ def mse(y_true, y_pred):
 @st.cache_resource
 def load_model_and_scaler():
     try:
-        # Load model with custom objects
         if os.path.exists('best_model.h5'):
             custom_objects = {'mse': mse}
             model = load_model('best_model.h5', custom_objects=custom_objects)
         else:
-            st.error("Model file 'best_model.h5' not found. Please ensure the file is in the correct location.")
+            st.error("Model file 'best_model.h5' not found.")
             return None, None
 
-        # Load scaler
         if os.path.exists('scaler.joblib'):
             scaler = joblib.load('scaler.joblib')
         else:
-            st.error("Scaler file 'scaler.joblib' not found. Please ensure the file is in the correct location.")
+            st.error("Scaler file 'scaler.joblib' not found.")
             return None, None
 
         return model, scaler
@@ -47,13 +40,12 @@ def load_model_and_scaler():
 # Define a function to load the uploaded data
 def load_data(uploaded_file):
     try:
-        # Check file type and load data accordingly
         if uploaded_file.name.endswith('.csv'):
             data = pd.read_csv(uploaded_file)
         elif uploaded_file.name.endswith('.xlsx'):
             data = pd.read_excel(uploaded_file)
         else:
-            st.error("Unsupported file format. Please upload a CSV or Excel file.")
+            st.error("Unsupported file format.")
             return None
         return data
     except Exception as e:
@@ -62,13 +54,21 @@ def load_data(uploaded_file):
 
 # Define a function to preprocess the data
 def preprocess_data(data):
-    # Example preprocessing steps (modify these based on your data)
     try:
-        # Handle missing values (simple approach)
+        # Fill missing values
         data = data.fillna(method='ffill').fillna(method='bfill')
 
-        # Example: removing non-numeric columns if any
-        data = data.select_dtypes(include=[np.number])
+        # Rename columns to match the feature names the model was trained with
+        expected_features = ['X1', 'X2', 'waitingTime', 'dayOfWeek']
+        actual_features = list(data.columns)
+        
+        # Handling missing expected features
+        for feature in expected_features:
+            if feature not in actual_features:
+                data[feature] = 0  # Placeholder value, adjust as needed
+
+        # Reorder the columns to match the order during training
+        data = data[expected_features]
 
         return data
     except Exception as e:
@@ -79,73 +79,48 @@ def preprocess_data(data):
 model, scaler = load_model_and_scaler()
 
 # Streamlit app
-st.title('Waiting Time Prediction and Hospital Finder App')
+st.title('Waiting Time Prediction App')
 
-# Sidebar for navigation
-page = st.sidebar.selectbox("Choose a page", ["Waiting Time Prediction", "Hospital Finder"])
+if model is None or scaler is None:
+    st.error("Unable to load the model or scaler.")
+else:
+    uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx'])
 
-if page == "Waiting Time Prediction":
-    st.header("Waiting Time Prediction")
-    
-    if model is None or scaler is None:
-        st.error("Unable to load the model or scaler. Please check the error messages above.")
-    else:
-        # File upload
-        uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx'])
-
-        if uploaded_file is not None:
-            # Load the uploaded data
-            data = load_data(uploaded_file)
+    if uploaded_file is not None:
+        data = load_data(uploaded_file)
+        if data is not None:
+            data = preprocess_data(data)
             if data is not None:
-                # Preprocess the data
-                data = preprocess_data(data)
-                if data is not None:
-                    st.write("Data Preview:")
-                    st.dataframe(data.head())
-                    
-                    # Feature selection and scaling (modify `features` and `target` based on your model)
-                    features = data.columns[:-1]  # All columns except the last one
-                    target = data.columns[-1]  # The last column as target
-                    
-                    X = data[features]
-                    y = data[target]
-                    X_scaled = scaler.transform(X)
-                    
-                    # Make predictions
-                    y_pred = model.predict(X_scaled).flatten()
-                    
-                    # Evaluate model
-                    mae = mean_absolute_error(y, y_pred)
-                    mse = sklearn_mse(y, y_pred)
-                    r2 = r2_score(y, y_pred)
-                    
-                    st.write("Model Performance:")
-                    st.write(f"MAE: {mae:.2f}")
-                    st.write(f"MSE: {mse:.2f}")
-                    st.write(f"R2: {r2:.2f}")
-                    
-                    # Visualizations
-                    st.write("Actual vs Predicted Plot:")
-                    fig_actual_vs_pred = plot_actual_vs_predicted(y, y_pred, 'Best Model')
-                    st.plotly_chart(fig_actual_vs_pred)
-                    
-                    st.write("Time Series Plot:")
-                    fig_time_series = plot_time_series(y, y_pred, data['timestamp'], 'Best Model')
-                    st.plotly_chart(fig_time_series)
-                    
-                    st.write("Residual Analysis:")
-                    fig_residuals = plot_residuals(y, y_pred, 'Best Model')
-                    st.plotly_chart(fig_residuals)
-                    
-                    st.write("Error Distribution:")
-                    fig_error_dist = plot_error_distribution(y, y_pred, 'Best Model')
-                    st.plotly_chart(fig_error_dist)
-                else:
-                    st.error("Error during data preprocessing.")
+                st.write("Data Preview:")
+                st.dataframe(data.head())
+                
+                # Feature selection
+                X = data.drop(columns=['waitingTime'])
+                y = data['waitingTime']
+                
+                # Scale features
+                X_scaled = scaler.transform(X)
+                
+                # Make predictions
+                y_pred = model.predict(X_scaled).flatten()
+                
+                # Evaluate model
+                mae = mean_absolute_error(y, y_pred)
+                mse = sklearn_mse(y, y_pred)
+                r2 = r2_score(y, y_pred)
+                
+                st.write(f"MAE: {mae:.2f}")
+                st.write(f"MSE: {mse:.2f}")
+                st.write(f"R2: {r2:.2f}")
+                
+                # Further visualizations (add your own plots)
             else:
-                st.error("Error loading data.")
+                st.error("Error during data preprocessing.")
         else:
-            st.write("Please upload a CSV or Excel file to begin the analysis.")
+            st.error("Error loading data.")
+    else:
+        st.write("Please upload a CSV or Excel file.")
+
 
 elif page == "Hospital Finder":
     st.header("Hospital Finder")
