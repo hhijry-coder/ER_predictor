@@ -10,8 +10,8 @@ import plotly.express as px
 from statsmodels.tsa.seasonal import seasonal_decompose
 
 # Set style for seaborn plots
-sns.set_style("whitegrid")
-plt.style.use("seaborn-darkgrid")
+sns.set_style("darkgrid")
+plt.style.use("seaborn")
 
 # Load the best model and scaler
 @st.cache_resource
