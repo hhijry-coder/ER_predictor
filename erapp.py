@@ -7,7 +7,11 @@ from tensorflow.keras.models import load_model
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 import joblib
 import plotly.express as px
-from statsmodels.tsa.seasonal import seasonal_decompose
+import folium
+from streamlit_folium import folium_static
+import requests
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
 # Set style for seaborn plots
 sns.set_style("darkgrid")
@@ -79,7 +83,7 @@ def plot_error_distribution(y_true, y_pred, model_name):
                        title=f'{model_name} Error Distribution')
     return fig
 
-# New functions for the hospital map feature
+# Hospital finder functions
 def get_location(city_name):
     geolocator = Nominatim(user_agent="hospital_finder")
     try:
@@ -172,26 +176,6 @@ if page == "Waiting Time Prediction":
         st.write("Error Distribution:")
         fig_error_dist = plot_error_distribution(y, y_pred, 'Best Model')
         st.plotly_chart(fig_error_dist)
-        
-        # Seasonal Decomposition
-        st.write("Seasonal Decomposition:")
-        ts = pd.Series(data['waitingTime'].values, index=data['timestamp'])
-        result = seasonal_decompose(ts, model='additive', period=24)
-        
-        fig, axes = plt.subplots(4, 1, figsize=(15, 20))
-        result.observed.plot(ax=axes[0])
-        axes[0].set_title('Observed')
-        result.trend.plot(ax=axes[1])
-        axes[1].set_title('Trend')
-        result.seasonal.plot(ax=axes[2])
-        axes[2].set_title('Seasonal')
-        result.resid.plot(ax=axes[3])
-        axes[3].set_title('Residual')
-        for ax in axes:
-            ax.set_xlabel('Date')
-            ax.set_ylabel('Waiting Time')
-        plt.tight_layout()
-        st.pyplot(fig)
 
     else:
         st.write("Please upload a CSV or Excel file to begin the analysis.")
