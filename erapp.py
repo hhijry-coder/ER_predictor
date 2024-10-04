@@ -4,7 +4,6 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from tensorflow.keras.models import load_model
-from tensorflow.keras.losses import mean_squared_error
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error as sklearn_mse
 import joblib
 import folium
@@ -13,24 +12,19 @@ import requests
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import os
-import tensorflow as tf
-
-# Define MSE as a metric function
-def mse(y_true, y_pred):
-    return mean_squared_error(y_true, y_pred)
 
 # Load the best model and scaler
 @st.cache_resource
 def load_model_and_scaler():
     try:
+        # Load model with custom objects
         if os.path.exists('best_model.h5'):
-            # Define custom objects
-            custom_objects = {'mse': mse}
-            model = load_model('best_model.h5', custom_objects=custom_objects)
+            model = load_model('best_model.h5')
         else:
             st.error("Model file 'best_model.h5' not found. Please ensure the file is in the correct location.")
             return None, None
 
+        # Load scaler
         if os.path.exists('scaler.joblib'):
             scaler = joblib.load('scaler.joblib')
         else:
@@ -40,9 +34,9 @@ def load_model_and_scaler():
         return model, scaler
     except Exception as e:
         st.error(f"Error loading model or scaler: {str(e)}")
-        st.error("If the error persists, you may need to retrain and save the model using the current version of Keras/TensorFlow.")
         return None, None
 
+# Load the model and scaler once
 model, scaler = load_model_and_scaler()
 
 # Streamlit app
