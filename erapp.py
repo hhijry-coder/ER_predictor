@@ -5,6 +5,7 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tensorflow.keras.models import load_model
+from tensorflow.keras.losses import MeanSquaredError
 from sklearn.preprocessing import StandardScaler
 import joblib
 from sklearn.model_selection import train_test_split
@@ -17,6 +18,7 @@ import folium
 from geopy.geocoders import Nominatim
 from streamlit_folium import st_folium
 import requests
+import os
 
 # Sidebar for Page Navigation
 st.sidebar.title("Navigation")
@@ -25,8 +27,22 @@ pages = st.sidebar.radio("Select a page:", ["Data Upload", "Model Training", "Ev
 # Global variables for storing loaded data
 uploaded_data = None
 X_train, X_test, y_train, y_test = None, None, None, None
-scaler = joblib.load('scaler.joblib')
-model = load_model('best_model.h5')
+
+# Paths for model and scaler (use appropriate path for Streamlit Cloud)
+scaler_path = os.path.join(os.path.dirname(__file__), 'scaler.joblib')
+model_path = os.path.join(os.path.dirname(__file__), 'best_model.h5')
+
+# Load Scaler and Model
+try:
+    scaler = joblib.load(scaler_path)
+except Exception as e:
+    st.error(f"Error loading scaler: {e}")
+
+try:
+    # Load the model and register the mse loss function
+    model = load_model(model_path, custom_objects={'mse': MeanSquaredError()})
+except Exception as e:
+    st.error(f"Error loading model: {e}")
 
 # Function to read CSV or XLSX
 def load_data(file):
@@ -178,4 +194,3 @@ elif pages == "Interactive Map":
         if folium_map:
             st.write(f"Showing hospitals near **{city_name}** within **{radius}** meters.")
             st_folium(folium_map, width=700, height=500)
-
