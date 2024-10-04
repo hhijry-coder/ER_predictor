@@ -23,39 +23,13 @@ import time
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 from requests.exceptions import RequestException
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, FunctionTransformer
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-import pandas as pd
-import numpy as np
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, FunctionTransformer
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from scipy import sparse
 
-# Sidebar for Page Navigation
-st.sidebar.title("Navigation")
-pages = st.sidebar.radio("Select a page:", ["Data Upload", "Model Training", "Evaluation & Visualization", "Interactive Map"])
-
-# Global variables for storing loaded data
-uploaded_data = None
-X_train, X_test, y_train, y_test = None, None, None, None
-preprocessor = None
-scaler = None
-model = None
-
-# Paths for model and scaler (use appropriate path for Streamlit Cloud)
-preprocessor_path = os.path.join(os.path.dirname(__file__), 'preprocessor.joblib')
-scaler_path = os.path.join(os.path.dirname(__file__), 'scaler.joblib')
-model_path = os.path.join(os.path.dirname(__file__), 'best_model.h5')
+# Paths for model and preprocessor (use appropriate path for Streamlit Cloud)
+preprocessor_path = 'preprocessor.joblib'
+model_path = 'best_model.h5'
 
 # Function to read CSV or XLSX
+@st.cache_data
 def load_data(file):
     if file.name.endswith('.csv'):
         return pd.read_csv(file)
@@ -80,12 +54,12 @@ def preprocess_data(X):
     # Create preprocessing steps for each column type
     numeric_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='median')),
-        ('scaler', StandardScaler(with_mean=False))  # Use with_mean=False for sparse compatibility
+        ('scaler', StandardScaler())
     ])
 
     categorical_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
-        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse=False))  # Use sparse=False
+        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
     ])
 
     # Combine preprocessing steps
@@ -93,21 +67,21 @@ def preprocess_data(X):
         transformers=[
             ('num', numeric_transformer, numeric_features),
             ('cat', categorical_transformer, categorical_features)
-        ],
-        sparse_threshold=0  # Always return dense array
-    )
+        ])
 
     # Fit and transform the data
     X_processed = preprocessor.fit_transform(X)
 
     # Create a new dataframe with processed data
-    feature_names = (numeric_features.tolist() + 
-                     preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(categorical_features).tolist())
+    feature_names = (
+        numeric_features.tolist() +
+        preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(categorical_features).tolist()
+    )
     
     X_processed_df = pd.DataFrame(X_processed, columns=feature_names, index=X.index)
 
     return X_processed_df, preprocessor
-    
+
 # Function to get hospitals using OpenStreetMap (Overpass API)
 def get_nearby_hospitals(lat, lon, radius=5000):
     overpass_url = "http://overpass-api.de/api/interpreter"
@@ -147,7 +121,6 @@ def geocode_with_retry(city_name, max_retries=3, initial_delay=1, backoff_factor
 
 # Function to create the folium map with hospitals
 def create_map(city_name, radius=5000):
-    # Get location (lat/lon) from city name
     location = geocode_with_retry(city_name)
     
     if location is None:
@@ -155,13 +128,9 @@ def create_map(city_name, radius=5000):
     
     lat, lon = location
 
-    # Initialize Folium map
     folium_map = folium.Map(location=[lat, lon], zoom_start=12)
-
-    # Get nearby hospitals
     hospitals = get_nearby_hospitals(lat, lon, radius)
 
-    # Add hospitals as markers
     for hospital in hospitals:
         hospital_name = hospital.get('tags', {}).get('name', 'Unnamed Hospital')
         folium.Marker(
@@ -171,6 +140,16 @@ def create_map(city_name, radius=5000):
         ).add_to(folium_map)
 
     return folium_map
+
+# Sidebar for Page Navigation
+st.sidebar.title("Navigation")
+pages = st.sidebar.radio("Select a page:", ["Data Upload", "Model Training", "Evaluation & Visualization", "Interactive Map"])
+
+# Global variables for storing loaded data
+uploaded_data = None
+X_train, X_test, y_train, y_test = None, None, None, None
+preprocessor = None
+model = None
 
 # Page 1: Data Upload
 if pages == "Data Upload":
@@ -191,7 +170,7 @@ if pages == "Data Upload":
         target_column = st.sidebar.selectbox("Target Column", uploaded_data.columns)
         
         st.sidebar.write("Select feature columns")
-        feature_columns = st.sidebar.multiselect("Feature Columns", uploaded_data.columns, default=uploaded_data.columns[:-1])
+        feature_columns = st.sidebar.multiselect("Feature Columns", uploaded_data.columns, default=uploaded_data.columns[:-1].tolist())
 
         if st.button("Process Data"):
             # Preprocess Data
@@ -202,16 +181,9 @@ if pages == "Data Upload":
             
             # Preprocess the data
             X_train_processed, preprocessor = preprocess_data(X_train)
-            X_test_processed = preprocessor.transform(X_test)
 
-            # Apply StandardScaler
-            scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train_processed)
-            X_test_scaled = scaler.transform(X_test_processed)
-
-            # Save the preprocessor and scaler
+            # Save the preprocessor
             joblib.dump(preprocessor, preprocessor_path)
-            joblib.dump(scaler, scaler_path)
 
             st.success("Data processed and ready for training!")
 
@@ -219,35 +191,30 @@ if pages == "Data Upload":
 elif pages == "Model Training":
     st.title("Train Models")
     
-    if uploaded_data is not None and X_train is not None:
-        model_type = st.sidebar.selectbox("Select Model", ["Traditional LSTM", "Advanced LSTM", "DNN"])
+    if uploaded_data is not None and 'X_train' in locals() and X_train is not None:
+        model_type = st.sidebar.selectbox("Select Model", ["DNN"])
 
-        # Display current model name
         st.write(f"Training the **{model_type}** model on your data.")
         
-        # Train button
         if st.button("Train"):
-            # Load preprocessor and scaler
+            # Load preprocessor
             preprocessor = joblib.load(preprocessor_path)
-            scaler = joblib.load(scaler_path)
 
-            # Preprocess and scale the data
+            # Preprocess the data
             X_train_processed = preprocessor.transform(X_train)
-            X_train_scaled = scaler.transform(X_train_processed)
 
-            # Implement model training logic based on selected model
-            # For this example, we'll use a simple Dense Neural Network
+            # Implement model training logic
             from tensorflow.keras.models import Sequential
             from tensorflow.keras.layers import Dense
 
             model = Sequential([
-                Dense(64, activation='relu', input_shape=(X_train_scaled.shape[1],)),
+                Dense(64, activation='relu', input_shape=(X_train_processed.shape[1],)),
                 Dense(32, activation='relu'),
                 Dense(1)
             ])
 
             model.compile(optimizer='adam', loss='mse')
-            model.fit(X_train_scaled, y_train, epochs=50, batch_size=32, validation_split=0.2, verbose=0)
+            model.fit(X_train_processed, y_train, epochs=50, batch_size=32, validation_split=0.2, verbose=0)
 
             # Save the model
             model.save(model_path)
@@ -260,24 +227,21 @@ elif pages == "Model Training":
 elif pages == "Evaluation & Visualization":
     st.title("Model Evaluation & Visualization")
 
-    if X_test is not None and scaler is not None:
+    if 'X_test' in locals() and X_test is not None:
         st.subheader("Model Performance")
 
-        # Load the preprocessor, scaler, and model
         try:
             preprocessor = joblib.load(preprocessor_path)
-            scaler = joblib.load(scaler_path)
-            model = load_model(model_path, custom_objects={'mse': MeanSquaredError()})
+            model = load_model(model_path)
         except Exception as e:
             st.error(f"Error loading model components: {e}")
             st.stop()
 
-        # Preprocess and scale the test data
+        # Preprocess the test data
         X_test_processed = preprocessor.transform(X_test)
-        X_test_scaled = scaler.transform(X_test_processed)
 
         # Predict with loaded model
-        y_pred = model.predict(X_test_scaled)
+        y_pred = model.predict(X_test_processed)
         
         # Calculate performance metrics
         mae = mean_absolute_error(y_test, y_pred)
@@ -304,13 +268,9 @@ elif pages == "Evaluation & Visualization":
 elif pages == "Interactive Map":
     st.title("Find Nearby Hospitals")
 
-    # User input for city name
     city_name = st.text_input("Enter the name of the city or town", value="New York")
-
-    # Slider for search radius
     radius = st.slider("Select search radius (in meters)", min_value=1000, max_value=20000, step=1000, value=5000)
 
-    # Search button
     if st.button("Find Hospitals"):
         with st.spinner("Searching for hospitals..."):
             folium_map = create_map(city_name, radius)
