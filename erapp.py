@@ -48,7 +48,6 @@ def load_data(file):
         return pd.read_excel(file)
     return None
 
-# Function to preprocess data
 def preprocess_data(X):
     # Identify column types
     numeric_features = X.select_dtypes(include=['int64', 'float64']).columns
@@ -60,7 +59,7 @@ def preprocess_data(X):
         for col in categorical_features:
             try:
                 X[col] = pd.to_datetime(X[col])
-                date_features = date_features.append(col)
+                date_features = date_features.append(pd.Index([col]))
                 categorical_features = categorical_features.drop(col)
             except:
                 pass
@@ -78,7 +77,7 @@ def preprocess_data(X):
 
     date_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='constant', fill_value='1900-01-01')),
-        ('date_to_num', FunctionTransformer(lambda x: x.astype(int) // 10**9))
+        ('date_to_num', FunctionTransformer(lambda x: x.astype(int) // 10**9, validate=False))
     ])
 
     # Combine preprocessing steps
@@ -99,7 +98,7 @@ def preprocess_data(X):
     X_processed_df = pd.DataFrame(X_processed, columns=feature_names, index=X.index)
 
     return X_processed_df, preprocessor
-
+    
 # Function to get hospitals using OpenStreetMap (Overpass API)
 def get_nearby_hospitals(lat, lon, radius=5000):
     overpass_url = "http://overpass-api.de/api/interpreter"
