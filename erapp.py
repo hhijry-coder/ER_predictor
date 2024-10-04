@@ -26,7 +26,7 @@ pages = st.sidebar.radio("Select a page:", ["Data Upload", "Model Training", "Ev
 uploaded_data = None
 X_train, X_test, y_train, y_test = None, None, None, None
 scaler = joblib.load('/mnt/data/scaler.joblib')
-model = load_model('/mnt/data/best_model.h5')
+model = load_model('https://github.com/hhijry-coder/ER_predictor/blob/main/best_model.h5')
 
 # Function to read CSV or XLSX
 def load_data(file):
