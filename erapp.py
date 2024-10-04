@@ -23,6 +23,12 @@ import time
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 from requests.exceptions import RequestException
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, FunctionTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 
 # Sidebar for Page Navigation
 st.sidebar.title("Navigation")
@@ -48,21 +54,19 @@ def load_data(file):
         return pd.read_excel(file)
     return None
 
+def convert_datetime_to_numeric(X):
+    X = X.copy()
+    for col in X.select_dtypes(include=['datetime64']).columns:
+        X[col] = X[col].astype(int) // 10**9
+    return X
+
 def preprocess_data(X):
+    # Convert datetime columns to numeric first
+    X = convert_datetime_to_numeric(X)
+
     # Identify column types
     numeric_features = X.select_dtypes(include=['int64', 'float64']).columns
     categorical_features = X.select_dtypes(include=['object', 'category']).columns
-    date_features = X.select_dtypes(include=['datetime64']).columns
-
-    # If there are no datetime columns, convert potential string date columns
-    if len(date_features) == 0:
-        for col in categorical_features:
-            try:
-                X[col] = pd.to_datetime(X[col])
-                date_features = date_features.append(pd.Index([col]))
-                categorical_features = categorical_features.drop(col)
-            except:
-                pass
 
     # Create preprocessing steps for each column type
     numeric_transformer = Pipeline(steps=[
@@ -75,26 +79,23 @@ def preprocess_data(X):
         ('onehot', OneHotEncoder(handle_unknown='ignore'))
     ])
 
-    date_transformer = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='constant', fill_value='1900-01-01')),
-        ('date_to_num', FunctionTransformer(lambda x: x.astype(int) // 10**9, validate=False))
-    ])
-
     # Combine preprocessing steps
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', numeric_transformer, numeric_features),
-            ('cat', categorical_transformer, categorical_features),
-            ('date', date_transformer, date_features)
+            ('cat', categorical_transformer, categorical_features)
         ])
 
     # Fit and transform the data
     X_processed = preprocessor.fit_transform(X)
 
     # Create a new dataframe with processed data
-    feature_names = (numeric_features.tolist() + 
-                     preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names(categorical_features).tolist() + 
-                     date_features.tolist())
+    if len(categorical_features) > 0:
+        feature_names = (numeric_features.tolist() + 
+                         preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names(categorical_features).tolist())
+    else:
+        feature_names = numeric_features.tolist()
+    
     X_processed_df = pd.DataFrame(X_processed, columns=feature_names, index=X.index)
 
     return X_processed_df, preprocessor
