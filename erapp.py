@@ -83,16 +83,16 @@ else:
                     # Drop unnecessary features
                     data = data.drop(columns=['X1', 'X2'], errors='ignore')
                     
+                    # Retrieve original feature names used during model training
+                    original_feature_names = scaler.feature_names_in_
+                    
                     # Ensure selected features are present
-                    missing_features = set(selected_features) - set(data.columns)
+                    missing_features = set(original_feature_names) - set(data.columns)
                     for feature in missing_features:
                         data[feature] = 0  # Add missing features with default values
 
-                    # Keep only selected features
-                    data = data[selected_features]
-
-                    # Ensure the order of columns matches the training data
-                    data = data[selected_features]
+                    # Keep only features that were part of the original model
+                    data = data[original_feature_names]
 
                     return data
 
@@ -100,7 +100,11 @@ else:
                 data = preprocess_data(data)
 
                 # Scale the features
-                X_scaled = scaler.transform(data)
+                try:
+                    X_scaled = scaler.transform(data)
+                except ValueError as e:
+                    st.error(f"Scaling Error: {str(e)}")
+                    st.stop()
 
                 # Make predictions
                 y_pred = model.predict(X_scaled).flatten()
@@ -121,8 +125,22 @@ else:
         # Convert input data to DataFrame
         input_df = pd.DataFrame([input_data])
 
+        # Retrieve original feature names used during model training
+        original_feature_names = scaler.feature_names_in_
+
+        # Ensure all features are aligned with those expected by the scaler
+        for feature in original_feature_names:
+            if feature not in input_df.columns:
+                input_df[feature] = 0  # Add missing features with default values
+
+        input_df = input_df[original_feature_names]  # Reorder the columns to match the training data
+
         # Scale the input features
-        X_scaled = scaler.transform(input_df)
+        try:
+            X_scaled = scaler.transform(input_df)
+        except ValueError as e:
+            st.error(f"Scaling Error: {str(e)}")
+            st.stop()
 
         # Make predictions
         y_pred = model.predict(X_scaled).flatten()
