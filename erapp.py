@@ -43,9 +43,17 @@ model, scaler = load_model_and_scaler()
 
 def plot_predictions(y_true, y_pred, title="Predicted vs Actual"):
     """Function to plot actual vs predicted values."""
-    df = pd.DataFrame({'Actual': y_true, 'Predicted': y_pred})
-    fig = px.line(df, y=['Actual', 'Predicted'], title=title)
-    fig.update_layout(xaxis_title="Sample Index", yaxis_title="Waiting Time")
+    df = pd.DataFrame({'Sample': range(len(y_pred)), 'Predicted': y_pred})
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(x=df['Sample'], y=df['Predicted'], mode='lines', name='Predicted'))
+    
+    if y_true is not None:
+        df['Actual'] = y_true
+        fig.add_trace(go.Scatter(x=df['Sample'], y=df['Actual'], mode='lines', name='Actual'))
+    
+    fig.update_layout(title=title, xaxis_title="Sample Index", yaxis_title="Waiting Time")
     return fig
 
 def plot_learning_curve(X, y, model, title="Learning Curve"):
