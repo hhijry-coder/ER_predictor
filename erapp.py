@@ -14,9 +14,6 @@ warnings.filterwarnings('ignore')
 # Set page configuration
 st.set_page_config(page_title="Waiting Time Predictor", layout="wide")
 
-import tensorflow as tf
-from tensorflow.keras.models import load_model
-import joblib
 
 def mse(y_true, y_pred):
     return tf.keras.losses.mean_squared_error(y_true, y_pred)
@@ -33,15 +30,25 @@ def load_model_and_scaler():
 
 model, scaler = load_model_and_scaler()
 
-# Preprocess the data
-if 'Arrival time' in data.columns:
+@st.cache_data
+def load_and_preprocess_data(file):
+    if file.name.endswith('.xlsx'):
+        data = pd.read_excel(file)
+    elif file.name.endswith('.csv'):
+        data = pd.read_csv(file)
+    else:
+        st.error("Unsupported file format. Please upload an XLSX or CSV file.")
+        return None
+
+    # Preprocess the data
+    if 'Arrival time' in data.columns:
         data['Arrival time'] = pd.to_datetime(data['Arrival time'])
         data['timestamp'] = data['Arrival time']
-elif 'timestamp' in data.columns:
+    elif 'timestamp' in data.columns:
         data['timestamp'] = pd.to_datetime(data['timestamp'])
-else:
+    else:
         st.error("The dataset must contain either 'Arrival time' or 'timestamp' column.")
-return None
+        return None
 
     data = data.sort_values('timestamp')
     
@@ -49,6 +56,7 @@ return None
     data = data.drop(['X1', 'X2'], axis=1, errors='ignore')
     
     return data
+
 
 # Load model and scaler
 @st.cache_resource
