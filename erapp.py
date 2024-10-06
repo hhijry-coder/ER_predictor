@@ -33,15 +33,15 @@ def load_model_and_scaler():
 
 model, scaler = load_model_and_scaler()
 
-    # Preprocess the data
-    if 'Arrival time' in data.columns:
+# Preprocess the data
+if 'Arrival time' in data.columns:
         data['Arrival time'] = pd.to_datetime(data['Arrival time'])
         data['timestamp'] = data['Arrival time']
-    elif 'timestamp' in data.columns:
+elif 'timestamp' in data.columns:
         data['timestamp'] = pd.to_datetime(data['timestamp'])
-    else:
+else:
         st.error("The dataset must contain either 'Arrival time' or 'timestamp' column.")
-        return None
+return None
 
     data = data.sort_values('timestamp')
     
