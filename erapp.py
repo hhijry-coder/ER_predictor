@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
+import plotly.express as px  # For visualization
 from tensorflow.keras.models import load_model
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error as sklearn_mse
 import joblib
@@ -56,9 +56,9 @@ else:
     input_mode = st.sidebar.selectbox("Input Mode", ["Batch Upload", "Manual Input"])
 
     def plot_predictions(y_true, y_pred, title="Predicted vs Actual"):
-        """Function to plot actual vs predicted values."""
-        df = pd.DataFrame({'Actual': y_true, 'Predicted': y_pred})
-        fig = px.line(df, title=title)
+        """Function to plot actual vs predicted values or predictions."""
+        df = pd.DataFrame({'Predicted': y_pred})
+        fig = px.line(df, y='Predicted', title=title)
         return fig
 
     if input_mode == "Batch Upload":
@@ -120,9 +120,13 @@ else:
                 with st.spinner('Making predictions...'):
                     y_pred = model.predict(X_scaled).flatten()
 
-                # Visualize predictions (without actuals since no target data is provided)
+                # Visualize predictions
                 st.write("Predicted Waiting Times:")
                 st.dataframe(pd.DataFrame({"Predicted WaitingTime": y_pred}))
+
+                # Plot the predictions
+                fig = plot_predictions(None, y_pred, title="Predicted Waiting Times (Batch)")
+                st.plotly_chart(fig)
 
                 # Allow users to download predictions
                 st.download_button(
@@ -171,6 +175,6 @@ else:
         # Display the prediction
         st.write(f"Predicted Waiting Time: {y_pred[0]:.2f} minutes")
 
-        # Provide visual feedback
-        fig = plot_predictions([0], y_pred, title="Manual Input Prediction")  # Plot prediction
+        # Plot the prediction (even for a single point)
+        fig = plot_predictions(None, y_pred, title="Manual Input Prediction")
         st.plotly_chart(fig)
