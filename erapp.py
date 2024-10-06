@@ -1,12 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import learning_curve
+import plotly.express as px  # For visualization
 from tensorflow.keras.models import load_model
-from tensorflow.keras.wrappers.scikit_learn import KerasRegressor  # Wrapper for compatibility
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error as sklearn_mse
 import joblib
 import os
@@ -40,10 +36,6 @@ def load_model_and_scaler():
         st.error(f"Error loading model or scaler: {str(e)}")
         return None, None
 
-# Wrap Keras model to make it Scikit-learn compatible
-def create_keras_regressor():
-    return KerasRegressor(build_fn=lambda: model, epochs=1, batch_size=32, verbose=0)
-
 # Load the model and scaler once
 model, scaler = load_model_and_scaler()
 
@@ -63,33 +55,10 @@ else:
     # Upload file or input values for online prediction
     input_mode = st.sidebar.selectbox("Input Mode", ["Batch Upload", "Manual Input"])
 
-    def plot_actual_vs_predicted(y_true, y_pred):
-        """Scatter plot of actual vs predicted values with best fit line."""
-        # Scatter plot
-        fig = px.scatter(x=y_pred, y=y_true, labels={'x': 'Predicted', 'y': 'Actual'}, title="Actual vs Predicted Scatter Plot")
-
-        # Fit a linear regression model for the best fit line
-        reg = LinearRegression().fit(y_pred.reshape(-1, 1), y_true)
-        best_fit_line = reg.predict(y_pred.reshape(-1, 1))
-
-        # Add best fit line to the scatter plot
-        fig.add_trace(go.Scatter(x=y_pred, y=best_fit_line, mode='lines', name='Best Fit Line', line=dict(color='red')))
-        return fig
-
-    def plot_learning_curve(train_sizes, train_scores, test_scores):
-        """Plot the learning curve (train and test scores over training size)."""
-        train_mean = np.mean(train_scores, axis=1)
-        test_mean = np.mean(test_scores, axis=1)
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=train_sizes, y=train_mean, mode='lines+markers', name='Training Score', line=dict(color='blue')))
-        fig.add_trace(go.Scatter(x=train_sizes, y=test_mean, mode='lines+markers', name='Validation Score', line=dict(color='orange')))
-        fig.update_layout(title="Learning Curve", xaxis_title="Training Examples", yaxis_title="Score")
-        return fig
-
-    def plot_histogram(y_pred):
-        """Plot histogram of predicted values."""
-        fig = px.histogram(y_pred, title="Prediction Histogram")
+    def plot_predictions(y_true, y_pred, title="Predicted vs Actual"):
+        """Function to plot actual vs predicted values or predictions."""
+        df = pd.DataFrame({'Predicted': y_pred})
+        fig = px.line(df, y='Predicted', title=title)
         return fig
 
     if input_mode == "Batch Upload":
@@ -151,24 +120,13 @@ else:
                 with st.spinner('Making predictions...'):
                     y_pred = model.predict(X_scaled).flatten()
 
-                # Assume that 'actual' values are available for plotting actual vs predicted
-                # You can replace this with the correct actual values
-                y_actual = np.random.rand(len(y_pred)) * 100  # Replace with actual target data
+                # Visualize predictions
+                st.write("Predicted Waiting Times:")
+                st.dataframe(pd.DataFrame({"Predicted WaitingTime": y_pred}))
 
-                # Plot actual vs predicted values with best fit line
-                fig_actual_vs_pred = plot_actual_vs_predicted(y_actual, y_pred)
-                st.plotly_chart(fig_actual_vs_pred)
-
-                # Plot prediction histogram
-                fig_histogram = plot_histogram(y_pred)
-                st.plotly_chart(fig_histogram)
-
-                # Learning curve with wrapped Keras model
-                keras_regressor = create_keras_regressor()
-                train_sizes = np.linspace(1, len(X_scaled), 10, dtype=int)
-                train_scores, test_scores = learning_curve(keras_regressor, X_scaled, y_actual, train_sizes=train_sizes, cv=3)
-                fig_learning_curve = plot_learning_curve(train_sizes, train_scores, test_scores)
-                st.plotly_chart(fig_learning_curve)
+                # Plot the predictions
+                fig = plot_predictions(None, y_pred, title="Predicted Waiting Times (Batch)")
+                st.plotly_chart(fig)
 
                 # Allow users to download predictions
                 st.download_button(
@@ -217,6 +175,6 @@ else:
         # Display the prediction
         st.write(f"Predicted Waiting Time: {y_pred[0]:.2f} minutes")
 
-        # Plot histogram for manual input prediction (though it's just one prediction)
-        fig_histogram = plot_histogram(y_pred)
-        st.plotly_chart(fig_histogram)
+        # Plot the prediction (even for a single point)
+        fig = plot_predictions(None, y_pred, title="Manual Input Prediction")
+        st.plotly_chart(fig)
