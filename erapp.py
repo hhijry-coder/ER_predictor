@@ -106,6 +106,9 @@ else:
                     st.error(f"Scaling Error: {str(e)}")
                     st.stop()
 
+                # Reshape data to match the model's expected input shape (batch_size, 1, num_features)
+                X_scaled = np.expand_dims(X_scaled, axis=1)
+
                 # Make predictions
                 y_pred = model.predict(X_scaled).flatten()
 
@@ -141,6 +144,9 @@ else:
         except ValueError as e:
             st.error(f"Scaling Error: {str(e)}")
             st.stop()
+
+        # Reshape data to match the model's expected input shape (batch_size, 1, num_features)
+        X_scaled = np.expand_dims(X_scaled, axis=1)
 
         # Make predictions
         y_pred = model.predict(X_scaled).flatten()
