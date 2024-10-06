@@ -2,7 +2,7 @@
 
 import streamlit as st
 import pandas as pd
-from main import load_prediction_resources, navigation
+from erapp import load_prediction_resources, navigation
 
 st.set_page_config(page_title="Batch Upload", page_icon="📊", layout="wide")
 
