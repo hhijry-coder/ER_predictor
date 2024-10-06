@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import learning_curve
 from tensorflow.keras.models import load_model
+from tensorflow.keras.wrappers.scikit_learn import KerasRegressor  # Wrapper for compatibility
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error as sklearn_mse
 import joblib
 import os
@@ -38,6 +39,10 @@ def load_model_and_scaler():
     except Exception as e:
         st.error(f"Error loading model or scaler: {str(e)}")
         return None, None
+
+# Wrap Keras model to make it Scikit-learn compatible
+def create_keras_regressor():
+    return KerasRegressor(build_fn=lambda: model, epochs=1, batch_size=32, verbose=0)
 
 # Load the model and scaler once
 model, scaler = load_model_and_scaler()
@@ -158,9 +163,10 @@ else:
                 fig_histogram = plot_histogram(y_pred)
                 st.plotly_chart(fig_histogram)
 
-                # Learning curve (dummy implementation as example, replace with actual learning curve)
+                # Learning curve with wrapped Keras model
+                keras_regressor = create_keras_regressor()
                 train_sizes = np.linspace(1, len(X_scaled), 10, dtype=int)
-                train_scores, test_scores = learning_curve(model, X_scaled, y_actual, train_sizes=train_sizes, cv=3)
+                train_scores, test_scores = learning_curve(keras_regressor, X_scaled, y_actual, train_sizes=train_sizes, cv=3)
                 fig_learning_curve = plot_learning_curve(train_sizes, train_scores, test_scores)
                 st.plotly_chart(fig_learning_curve)
 
