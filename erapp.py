@@ -96,25 +96,74 @@ def load_prediction_resources():
 
 model, scaler = load_prediction_resources()
 
+
 # Navigation
 def navigation():
     st.markdown("""
-    <div class="nav">
+    <style>
+    .nav-container {
+        display: flex;
+        justify-content: space-around;
+        padding: 10px;
+        background-color: #f0f2f6;
+        border-radius: 5px;
+    }
+    .nav-item {
+        position: relative;
+        cursor: pointer;
+    }
+    .nav-item:hover .sub-menu {
+        display: block;
+    }
+    .sub-menu {
+        display: none;
+        position: absolute;
+        background-color: #f9f9f9;
+        min-width: 160px;
+        box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+        z-index: 1;
+    }
+    .sub-menu a {
+        color: black;
+        padding: 12px 16px;
+        text-decoration: none;
+        display: block;
+    }
+    .sub-menu a:hover {
+        background-color: #f1f1f1;
+    }
+    </style>
+    
+    <div class="nav-container">
         <div class="nav-item">
             Home
             <div class="sub-menu">
-                <a href="#" onclick="document.getElementById('home').click();">Prediction</a>
+                <a href="javascript:void(0);" onclick="streamlitSelectPage('home');">Prediction</a>
             </div>
         </div>
         <div class="nav-item">
             Data Analysis
             <div class="sub-menu">
-                <a href="#" onclick="document.getElementById('batch_upload').click();">Batch Upload</a>
-                <a href="#" onclick="document.getElementById('visualization').click();">Visualization</a>
+                <a href="javascript:void(0);" onclick="streamlitSelectPage('batch_upload');">Batch Upload</a>
+                <a href="javascript:void(0);" onclick="streamlitSelectPage('visualization');">Visualization</a>
             </div>
         </div>
     </div>
+    
+    <script>
+    function streamlitSelectPage(page) {
+        const selectBox = window.parent.document.querySelector('select[aria-label="Select page"]');
+        for(let i = 0; i < selectBox.options.length; i++) {
+            if(selectBox.options[i].text.toLowerCase().includes(page)) {
+                selectBox.value = selectBox.options[i].value;
+                selectBox.dispatchEvent(new Event('change'));
+                break;
+            }
+        }
+    }
+    </script>
     """, unsafe_allow_html=True)
+
 
     # Hidden buttons for navigation
     st.button("Home", key="home", on_click=set_page, args=("home",), style="display: none;")
