@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
-from main import navigation
+from erapp import navigation
 
 st.set_page_config(page_title="Data Visualization", page_icon="📈", layout="wide")
 
