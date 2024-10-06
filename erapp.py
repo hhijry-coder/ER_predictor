@@ -4,100 +4,215 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 from tensorflow.keras.models import load_model
+from statsmodels.tsa.seasonal import seasonal_decompose
 import joblib
-import io
-import base64
+import warnings
 
-# Load the best model and scaler
-@st.cache_resource
-def load_model_and_scaler():
-    model = load_model('best_model (1).h5')
-    scaler = joblib.load('scaler (1).joblib')
-    return model, scaler
+warnings.filterwarnings('ignore')
 
-model, scaler = load_model_and_scaler()
+# Load model and scaler
+model = load_model('best_model (1).h5')
+scaler = joblib.load('scaler (1).joblib')
 
-# Set page config
-st.set_page_config(page_title="Waiting Time Prediction App", layout="wide")
+# Set style for seaborn plots
+sns.set_style("whitegrid")
+plt.style.use("seaborn-darkgrid")
 
-# Title
-st.title("Waiting Time Prediction App")
+# Streamlit app
+def main():
+    st.title("Time Series Analysis and Prediction")
 
-# Sidebar for user inputs
-st.sidebar.header("Input Parameters")
+    # File uploader for CSV and XLSX
+    uploaded_file = st.file_uploader("Upload Combined Data (CSV or XLSX)", type=["csv", "xlsx"])
+    data = None
 
-# Create input fields for features
-X3 = st.sidebar.number_input("X3", min_value=0.0, max_value=100.0, value=50.0)
-hour = st.sidebar.number_input("Hour", min_value=0, max_value=23, value=12)
-minutes = st.sidebar.number_input("Minutes", min_value=0, max_value=59, value=30)
-waiting_people = st.sidebar.number_input("Waiting People", min_value=0, max_value=1000, value=50)
-day_of_week = st.sidebar.number_input("Day of Week (0-6)", min_value=0, max_value=6, value=3)
-service_time = st.sidebar.number_input("Service Time", min_value=0.0, max_value=1000.0, value=100.0)
+    if uploaded_file is not None:
+        if uploaded_file.name.endswith('.csv'):
+            data = pd.read_csv(uploaded_file)
+        elif uploaded_file.name.endswith('.xlsx'):
+            data = pd.read_excel(uploaded_file)
 
-# Create a dataframe from user inputs
-input_data = pd.DataFrame({
-    'X3': [X3],
-    'hour': [hour],
-    'minutes': [minutes],
-    'waitingPeople': [waiting_people],
-    'dayOfWeek': [day_of_week],
-    'serviceTime': [service_time]
-})
+        data['Arrival time'] = pd.to_datetime(data['Arrival time'], format='%m/%d/%Y %H:%M')
+        data['timestamp'] = data['Arrival time']
+        data = data.sort_values('timestamp')
 
-# Scale the input data
-input_scaled = scaler.transform(input_data)
+        # Drop X1 and X2
+        data = data.drop(['X1', 'X2'], axis=1)
 
-# Reshape input for LSTM (if the model expects 3D input)
-input_reshaped = input_scaled.reshape((input_scaled.shape[0], 1, input_scaled.shape[1]))
+    # Sidebar for online input
+    st.sidebar.header("Manual Input")
+    X3 = st.sidebar.number_input("X3", value=0.0)
+    hour = st.sidebar.number_input("Hour", min_value=0, max_value=23, value=12)
+    minutes = st.sidebar.number_input("Minutes", min_value=0, max_value=59, value=30)
+    waitingPeople = st.sidebar.number_input("Waiting People", min_value=0, value=0)
+    dayOfWeek = st.sidebar.selectbox("Day of Week", options=list(range(7)), format_func=lambda x: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][x])
+    serviceTime = st.sidebar.number_input("Service Time", value=0.0)
 
-# Make prediction
-prediction = model.predict(input_reshaped)
+    # If no data is uploaded, use manual input
+    if data is None:
+        data = pd.DataFrame({
+            'X3': [X3],
+            'hour': [hour],
+            'minutes': [minutes],
+            'waitingPeople': [waitingPeople],
+            'dayOfWeek': [dayOfWeek],
+            'serviceTime': [serviceTime],
+            'waitingTime': [0]  # Placeholder for target
+        })
 
-# Display prediction
-st.header("Prediction Result")
-st.write(f"Predicted Waiting Time: {prediction[0][0]:.2f} minutes")
+    # Feature selection
+    features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
+    target = 'waitingTime'
 
-# Visualization
-st.header("Visualizations")
+    # Preprocessing visualizations
+    if st.checkbox("Show Preprocessing Visualizations"):
+        plot_preprocessing_visualizations(data, features, target)
 
-# Function to create download link for plot
-def get_image_download_link(fig, filename, text):
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    buf.seek(0)
-    b64 = base64.b64encode(buf.read()).decode()
-    href = f'<a href="data:image/png;base64,{b64}" download="{filename}">{text}</a>'
-    return href
+    # Train/Test split
+    train_size = int(len(data) * 0.8)
+    X = data[features]
+    y = data[target]
+    X_train, X_test = X[:train_size], X[train_size:]
+    y_train, y_test = y[:train_size], y[train_size:]
 
-# Feature Importance Plot (using coefficients as a simple proxy for importance)
-fig, ax = plt.subplots(figsize=(10, 6))
-feature_importance = np.abs(scaler.scale_)
-feature_names = input_data.columns
-sns.barplot(x=feature_importance, y=feature_names)
-plt.title("Feature Importance")
-plt.xlabel("Absolute Scaled Coefficient")
-st.pyplot(fig)
-st.markdown(get_image_download_link(fig, "feature_importance.png", "Download Feature Importance Plot"), unsafe_allow_html=True)
+    # Scale features
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
-# Historical Data Plot (if available)
-st.subheader("Historical Data Plot")
-st.write("Note: This plot will be generated if historical data is available.")
+    # Reshape input for LSTM
+    X_train_lstm = X_train_scaled.reshape((X_train_scaled.shape[0], 1, X_train_scaled.shape[1]))
+    X_test_lstm = X_test_scaled.reshape((X_test_scaled.shape[0], 1, X_test_scaled.shape[1]))
 
-# You can add code here to load and plot historical data if available
+    # Predictions
+    y_pred = model.predict(X_test_lstm).flatten()
 
-# Additional Information
-st.header("Additional Information")
-st.write("""
-This app uses a machine learning model to predict waiting times based on various input parameters.
-The model has been trained on historical data and uses features such as X3, hour, minutes, number of waiting people,
-day of the week, and service time to make predictions.
+    # Evaluate model
+    evaluate_model(y_test, y_pred, 'Loaded Model')
 
-Please note that the accuracy of predictions may vary, and this tool should be used as a general guide rather than
-a definitive forecast.
-""")
+    # Visualizations
+    if st.checkbox("Show Learning Curves"):
+        plot_learning_curves(history, 'Loaded Model')
 
-# Footer
-st.sidebar.markdown("---")
-st.sidebar.write("Created by Your Name")
-st.sidebar.write("© 2023 Your Company")
+    if st.checkbox("Show Actual vs Predicted Plots"):
+        plot_actual_vs_predicted(y_test, y_pred, 'Loaded Model')
+
+    if st.checkbox("Show Time Series Plot"):
+        test_dates = data['timestamp'].iloc[-len(y_test):]
+        plot_time_series(y_test, y_pred, test_dates, 'Loaded Model')
+
+    if st.checkbox("Show Seasonal Decomposition"):
+        ts = pd.Series(data['waitingTime'].values, index=data['timestamp'])
+        plot_seasonal_decomposition(ts)
+
+    if st.checkbox("Show Residual Analysis"):
+        plot_residuals(y_test, y_pred, 'Loaded Model')
+
+    if st.checkbox("Show Error Distribution"):
+        plot_error_distribution(y_test, y_pred, 'Loaded Model')
+
+def plot_preprocessing_visualizations(data, features, target):
+    # Box plots
+    st.subheader("Box Plots of Features and Target")
+    fig, ax = plt.subplots(figsize=(15, 6))
+    sns.boxplot(data=data[features + [target]], ax=ax)
+    st.pyplot(fig)
+
+    # Correlation matrix
+    st.subheader("Correlation Matrix")
+    fig, ax = plt.subplots(figsize=(12, 10))
+    corr = data[features + [target]].corr()
+    mask = np.triu(np.ones_like(corr, dtype=bool))
+    sns.heatmap(corr, mask=mask, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0, ax=ax)
+    st.pyplot(fig)
+
+    # Frequency distribution
+    st.subheader("Frequency Distribution")
+    n_plots = len(features) + 1
+    n_cols = 2
+    n_rows = math.ceil(n_plots / n_cols)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 5 * n_rows))
+    axes = axes.flatten()
+
+    for i, feature in enumerate(features + [target]):
+        sns.histplot(data[feature], kde=True, color='skyblue', edgecolor='black', ax=axes[i])
+        axes[i].set_title(f'Distribution of {feature}')
+
+    st.pyplot(fig)
+
+def evaluate_model(y_true, y_pred, model_name):
+    mae = mean_absolute_error(y_true, y_pred)
+    mse = mean_squared_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    st.write(f'{model_name} - MAE: {mae:.2f}, MSE: {mse:.2f}, R2: {r2:.2f}')
+
+def plot_learning_curves(history, model_name):
+    st.subheader(f'{model_name} Learning Curve')
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.plot(history.history['loss'], label='Training Loss', color='blue')
+    ax.plot(history.history['val_loss'], label='Validation Loss', color='red')
+    ax.set_title(f'{model_name} Learning Curve')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Mean Squared Error')
+    ax.legend()
+    st.pyplot(fig)
+
+def plot_actual_vs_predicted(y_true, y_pred, model_name):
+    st.subheader(f'{model_name}: Actual vs Predicted')
+    fig, ax = plt.subplots(figsize=(12, 8))
+    sns.regplot(x=y_true, y=y_pred, scatter_kws={'alpha':0.5}, line_kws={'color':'red'}, ax=ax)
+    ax.set_xlabel('Actual Waiting Time')
+    ax.set_ylabel('Predicted Waiting Time')
+    st.pyplot(fig)
+
+def plot_time_series(actual, predicted, dates, model_name):
+    st.subheader(f'Time Series of Actual vs Predicted Waiting Times - {model_name}')
+    fig, ax = plt.subplots(figsize=(15, 8))
+    window = 24
+    actual_smooth = pd.Series(actual).rolling(window=window).mean()
+    predicted_smooth = pd.Series(predicted).rolling(window=window).mean()
+    ax.plot(dates, actual, label='Actual', alpha=0.3, color='blue')
+    ax.plot(dates, predicted, label='Predicted', alpha=0.3, color='red')
+    ax.plot(dates, actual_smooth, label='Actual (Smoothed)', linewidth=2, color='darkblue')
+    ax.plot(dates, predicted_smooth, label='Predicted (Smoothed)', linewidth=2, color='darkred')
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Waiting Time')
+    ax.legend()
+    st.pyplot(fig)
+
+def plot_seasonal_decomposition(ts):
+    st.subheader("Seasonal Decomposition")
+    result = seasonal_decompose(ts, model='additive', period=24)
+    fig, axes = plt.subplots(4, 1, figsize=(15, 20))
+    result.observed.plot(ax=axes[0])
+    axes[0].set_title('Observed')
+    result.trend.plot(ax=axes[1])
+    axes[1].set_title('Trend')
+    result.seasonal.plot(ax=axes[2])
+    axes[2].set_title('Seasonal')
+    result.resid.plot(ax=axes[3])
+    axes[3].set_title('Residual')
+    st.pyplot(fig)
+
+def plot_residuals(y_true, y_pred, model_name):
+    st.subheader(f'Residual Analysis - {model_name}')
+    fig, ax = plt.subplots(figsize=(12, 8))
+    residuals = y_true - y_pred
+    sns.regplot(x=y_pred, y=residuals, scatter_kws={'alpha':0.5}, line_kws={'color':'red'}, ax=ax)
+    ax.set_xlabel('Predicted Values')
+    ax.set_ylabel('Residuals')
+    ax.axhline(y=0, color='r', linestyle='--')
+    st.pyplot(fig)
+
+def plot_error_distribution(y_true, y_pred, model_name):
+    st.subheader(f'{model_name} Error Distribution')
+    fig, ax = plt.subplots(figsize=(12, 8))
+    errors = y_true - y_pred
+    sns.histplot(errors, kde=True, color='skyblue', edgecolor='black', ax=ax)
+    ax.set_xlabel('Error')
+    ax.set_ylabel('Frequency')
+    st.pyplot(fig)
+
+if __name__ == "__main__":
+    main()
