@@ -15,13 +15,19 @@ warnings.filterwarnings('ignore')
 st.set_page_config(page_title="Waiting Time Predictor", layout="wide")
 
 
-def mse(y_true, y_pred):
-    return tf.keras.losses.mean_squared_error(y_true, y_pred)
+@keras.saving.register_keras_serializable()
+class MSE(tf.keras.metrics.Mean):
+    def __init__(self, name='mse', **kwargs):
+        super().__init__(name=name, **kwargs)
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        mse = tf.keras.losses.mean_squared_error(y_true, y_pred)
+        return super().update_state(mse, sample_weight=sample_weight)
 
 @st.cache_resource
 def load_model_and_scaler():
-    # Define custom objects dictionary with 'mse' function
-    custom_objects = {'mse': mse}
+    # Define custom objects dictionary with 'mse' metric
+    custom_objects = {'mse': MSE()}
     
     # Load the model with custom objects
     model = load_model('best_model (1).h5', custom_objects=custom_objects)
@@ -56,7 +62,6 @@ def load_and_preprocess_data(file):
     data = data.drop(['X1', 'X2'], axis=1, errors='ignore')
     
     return data
-
 
 # Load model and scaler
 @st.cache_resource
