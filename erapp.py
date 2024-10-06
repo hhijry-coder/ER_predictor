@@ -20,17 +20,17 @@ def mse(y_true, y_pred):
 @st.cache_resource
 def load_model_and_scaler():
     try:
-        if os.path.exists('best_model.h5'):
+        if os.path.exists('best_model (1).h5'):
             custom_objects = {'mse': mse}
-            model = load_model('best_model.h5', custom_objects=custom_objects)
+            model = load_model('best_model (1).h5', custom_objects=custom_objects)
         else:
-            st.error("Model file 'best_model.h5' not found.")
+            st.error("Model file 'best_model (1).h55' not found.")
             return None, None
 
-        if os.path.exists('scaler.joblib'):
-            scaler = joblib.load('scaler.joblib')
+        if os.path.exists('scaler (1).joblib'):
+            scaler = joblib.load('scaler (1).joblib')
         else:
-            st.error("Scaler file 'scaler.joblib' not found.")
+            st.error("Scaler file 'scaler (1).joblib' not found.")
             return None, None
 
         return model, scaler
