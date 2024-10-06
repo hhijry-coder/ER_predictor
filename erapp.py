@@ -14,16 +14,24 @@ warnings.filterwarnings('ignore')
 # Set page configuration
 st.set_page_config(page_title="Waiting Time Predictor", layout="wide")
 
-# Function to load and preprocess data
-@st.cache_data
-def load_and_preprocess_data(file):
-    if file.name.endswith('.xlsx'):
-        data = pd.read_excel(file)
-    elif file.name.endswith('.csv'):
-        data = pd.read_csv(file)
-    else:
-        st.error("Unsupported file format. Please upload an XLSX or CSV file.")
-        return None
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+import joblib
+
+def mse(y_true, y_pred):
+    return tf.keras.losses.mean_squared_error(y_true, y_pred)
+
+@st.cache_resource
+def load_model_and_scaler():
+    # Define custom objects dictionary with 'mse' function
+    custom_objects = {'mse': mse}
+    
+    # Load the model with custom objects
+    model = load_model('best_model (1).h5', custom_objects=custom_objects)
+    scaler = joblib.load('scaler (1).joblib')
+    return model, scaler
+
+model, scaler = load_model_and_scaler()
 
     # Preprocess the data
     if 'Arrival time' in data.columns:
