@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px  # For visualization
+import plotly.express as px
+import plotly.graph_objects as go
 from tensorflow.keras.models import load_model
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error as sklearn_mse
+from sklearn.model_selection import learning_curve
 import joblib
 import os
 import tensorflow as tf
@@ -39,6 +41,38 @@ def load_model_and_scaler():
 # Load the model and scaler once
 model, scaler = load_model_and_scaler()
 
+def plot_predictions(y_true, y_pred, title="Predicted vs Actual"):
+    """Function to plot actual vs predicted values."""
+    df = pd.DataFrame({'Actual': y_true, 'Predicted': y_pred})
+    fig = px.line(df, y=['Actual', 'Predicted'], title=title)
+    fig.update_layout(xaxis_title="Sample Index", yaxis_title="Waiting Time")
+    return fig
+
+def plot_learning_curve(X, y, model, title="Learning Curve"):
+    """Function to plot the learning curve."""
+    train_sizes, train_scores, test_scores = learning_curve(
+        model, X, y, cv=5, n_jobs=-1, train_sizes=np.linspace(0.1, 1.0, 10))
+
+    train_scores_mean = np.mean(train_scores, axis=1)
+    train_scores_std = np.std(train_scores, axis=1)
+    test_scores_mean = np.mean(test_scores, axis=1)
+    test_scores_std = np.std(test_scores, axis=1)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=train_sizes, y=train_scores_mean, mode='lines+markers',
+                             name='Training score', line=dict(color='blue')))
+    fig.add_trace(go.Scatter(x=train_sizes, y=test_scores_mean, mode='lines+markers',
+                             name='Cross-validation score', line=dict(color='red')))
+    fig.update_layout(title=title, xaxis_title="Training examples", yaxis_title="Score")
+    return fig
+
+def plot_error_histogram(y_true, y_pred, title="Prediction Error Histogram"):
+    """Function to plot the prediction error histogram."""
+    errors = y_pred - y_true
+    fig = px.histogram(errors, nbins=30, title=title)
+    fig.update_layout(xaxis_title="Prediction Error", yaxis_title="Frequency")
+    return fig
+
 # Streamlit app
 st.title('Waiting Time Prediction App')
 
@@ -54,12 +88,6 @@ else:
 
     # Upload file or input values for online prediction
     input_mode = st.sidebar.selectbox("Input Mode", ["Batch Upload", "Manual Input"])
-
-    def plot_predictions(y_true, y_pred, title="Predicted vs Actual"):
-        """Function to plot actual vs predicted values or predictions."""
-        df = pd.DataFrame({'Predicted': y_pred})
-        fig = px.line(df, y='Predicted', title=title)
-        return fig
 
     if input_mode == "Batch Upload":
         uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx'])
@@ -106,27 +134,62 @@ else:
                 # Preprocess the data
                 data = preprocess_data(data)
 
+                # Check if 'WaitingTime' column exists for actual values
+                if 'WaitingTime' in data.columns:
+                    y_true = data['WaitingTime'].values
+                    X = data.drop(columns=['WaitingTime'])
+                else:
+                    y_true = None
+                    X = data
+                    st.warning("No 'WaitingTime' column found in the uploaded data. Only predictions will be shown.")
+
                 # Scale the features
                 try:
-                    X_scaled = scaler.transform(data)
+                    X_scaled = scaler.transform(X)
                 except ValueError as e:
                     st.error(f"Scaling Error: {str(e)}")
                     st.stop()
 
                 # Reshape data to match the model's expected input shape (batch_size, 1, num_features)
-                X_scaled = np.expand_dims(X_scaled, axis=1)
+                X_scaled_reshaped = np.expand_dims(X_scaled, axis=1)
 
                 # Display progress bar while making predictions
                 with st.spinner('Making predictions...'):
-                    y_pred = model.predict(X_scaled).flatten()
+                    y_pred = model.predict(X_scaled_reshaped).flatten()
 
                 # Visualize predictions
                 st.write("Predicted Waiting Times:")
                 st.dataframe(pd.DataFrame({"Predicted WaitingTime": y_pred}))
 
                 # Plot the predictions
-                fig = plot_predictions(None, y_pred, title="Predicted Waiting Times (Batch)")
-                st.plotly_chart(fig)
+                if y_true is not None:
+                    fig_predictions = plot_predictions(y_true, y_pred, title="Predicted vs Actual Waiting Times (Batch)")
+                    st.plotly_chart(fig_predictions)
+
+                    # Calculate and display metrics
+                    mae = mean_absolute_error(y_true, y_pred)
+                    mse = sklearn_mse(y_true, y_pred)
+                    rmse = np.sqrt(mse)
+                    r2 = r2_score(y_true, y_pred)
+
+                    st.write("Model Performance Metrics:")
+                    st.write(f"Mean Absolute Error: {mae:.2f}")
+                    st.write(f"Mean Squared Error: {mse:.2f}")
+                    st.write(f"Root Mean Squared Error: {rmse:.2f}")
+                    st.write(f"R-squared Score: {r2:.2f}")
+
+                    # Plot learning curve
+                    st.write("Learning Curve:")
+                    fig_learning_curve = plot_learning_curve(X_scaled, y_true, model)
+                    st.plotly_chart(fig_learning_curve)
+
+                    # Plot error histogram
+                    st.write("Prediction Error Histogram:")
+                    fig_error_hist = plot_error_histogram(y_true, y_pred)
+                    st.plotly_chart(fig_error_hist)
+                else:
+                    fig_predictions = plot_predictions(None, y_pred, title="Predicted Waiting Times (Batch)")
+                    st.plotly_chart(fig_predictions)
 
                 # Allow users to download predictions
                 st.download_button(
