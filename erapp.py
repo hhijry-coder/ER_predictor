@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.express as px
 from tensorflow.keras.models import load_model
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error as sklearn_mse
 import joblib
@@ -53,6 +54,12 @@ else:
 
     # Upload file or input values for online prediction
     input_mode = st.sidebar.selectbox("Input Mode", ["Batch Upload", "Manual Input"])
+
+    def plot_predictions(y_true, y_pred, title="Predicted vs Actual"):
+        """Function to plot actual vs predicted values."""
+        df = pd.DataFrame({'Actual': y_true, 'Predicted': y_pred})
+        fig = px.line(df, title=title)
+        return fig
 
     if input_mode == "Batch Upload":
         uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx'])
@@ -109,12 +116,21 @@ else:
                 # Reshape data to match the model's expected input shape (batch_size, 1, num_features)
                 X_scaled = np.expand_dims(X_scaled, axis=1)
 
-                # Make predictions
-                y_pred = model.predict(X_scaled).flatten()
+                # Display progress bar while making predictions
+                with st.spinner('Making predictions...'):
+                    y_pred = model.predict(X_scaled).flatten()
 
-                # Display predictions
+                # Visualize predictions (without actuals since no target data is provided)
                 st.write("Predicted Waiting Times:")
                 st.dataframe(pd.DataFrame({"Predicted WaitingTime": y_pred}))
+
+                # Allow users to download predictions
+                st.download_button(
+                    label="Download Predictions",
+                    data=pd.DataFrame({"Predicted WaitingTime": y_pred}).to_csv(index=False),
+                    file_name="predictions.csv",
+                    mime="text/csv"
+                )
 
     elif input_mode == "Manual Input":
         st.write("Manual Input for Online Prediction")
@@ -148,8 +164,13 @@ else:
         # Reshape data to match the model's expected input shape (batch_size, 1, num_features)
         X_scaled = np.expand_dims(X_scaled, axis=1)
 
-        # Make predictions
-        y_pred = model.predict(X_scaled).flatten()
+        # Display progress bar while making predictions
+        with st.spinner('Making prediction...'):
+            y_pred = model.predict(X_scaled).flatten()
 
         # Display the prediction
         st.write(f"Predicted Waiting Time: {y_pred[0]:.2f} minutes")
+
+        # Provide visual feedback
+        fig = plot_predictions([0], y_pred, title="Manual Input Prediction")  # Plot prediction
+        st.plotly_chart(fig)
