@@ -39,10 +39,6 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Custom metric function
-def mse(y_true, y_pred):
-    return K.mean(K.square(y_pred - y_true), axis=-1)
-
 # Load model and scaler
 @st.cache_resource
 def load_prediction_resources():
@@ -66,7 +62,7 @@ def load_prediction_resources():
                 f.write(response.content)
             
             # Load the files
-            model = load_model(model_path, custom_objects={'mse': mse})
+            model = load_model(model_path)
             scaler = joblib.load(scaler_path)
             
             return model, scaler
