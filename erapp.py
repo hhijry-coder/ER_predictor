@@ -12,8 +12,8 @@ import base64
 # Load the best model and scaler
 @st.cache_resource
 def load_model_and_scaler():
-    model = load_model('best_model.h5')
-    scaler = joblib.load('scaler.joblib')
+    model = load_model('best_model (1).h5')
+    scaler = joblib.load('scaler (1).joblib')
     return model, scaler
 
 model, scaler = load_model_and_scaler()
