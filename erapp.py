@@ -142,14 +142,14 @@ else:
                 # Preprocess the data
                 data = preprocess_data(data)
 
-                # Check if 'WaitingTime' column exists for actual values
-                if 'WaitingTime' in data.columns:
-                    y_true = data['WaitingTime'].values
-                    X = data.drop(columns=['WaitingTime'])
+                # Check if 'waitingTime' column exists for actual values
+                if 'waitingTime' in data.columns:
+                    y_true = data['waitingTime'].values
+                    X = data.drop(columns=['waitingTime'])
                 else:
                     y_true = None
                     X = data
-                    st.warning("No 'WaitingTime' column found in the uploaded data. Only predictions will be shown.")
+                    st.warning("No 'waitingTime' column found in the uploaded data. Only predictions will be shown.")
 
                 # Scale the features
                 try:
@@ -167,7 +167,7 @@ else:
 
                 # Visualize predictions
                 st.write("Predicted Waiting Times:")
-                st.dataframe(pd.DataFrame({"Predicted WaitingTime": y_pred}))
+                st.dataframe(pd.DataFrame({"Predicted waitingTime": y_pred}))
 
                 # Plot the predictions
                 if y_true is not None:
@@ -202,7 +202,7 @@ else:
                 # Allow users to download predictions
                 st.download_button(
                     label="Download Predictions",
-                    data=pd.DataFrame({"Predicted WaitingTime": y_pred}).to_csv(index=False),
+                    data=pd.DataFrame({"Predicted waitingTime": y_pred}).to_csv(index=False),
                     file_name="predictions.csv",
                     mime="text/csv"
                 )
