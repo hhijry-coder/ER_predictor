@@ -5,14 +5,10 @@ import pickle
 from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 import seaborn as sns
-from io import StringIO
-
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 # Set style for seaborn plots
 sns.set_style("whitegrid")
-plt.style.use("seaborn-v0_8-darkgrid")  
+plt.style.use("seaborn-v0_8-darkgrid")
 
 # Load the saved model and scaler
 @st.cache_resource
@@ -44,56 +40,8 @@ def display_fancy_prediction(predicted_time):
         unsafe_allow_html=True
     )
 
-# Function to plot actual vs predicted results
-def plot_actual_vs_predicted(y_true, y_pred, model_name):
-    plt.figure(figsize=(12, 8))
-    sns.regplot(x=y_true, y=y_pred, scatter_kws={'alpha':0.5}, line_kws={'color':'red'})
-    plt.xlabel('Actual Waiting Time', fontsize=14, fontweight='bold')
-    plt.ylabel('Predicted Waiting Time', fontsize=14, fontweight='bold')
-    plt.title(f'{model_name}: Actual vs Predicted', fontsize=16, fontweight='bold')
-    plt.xticks(fontsize=12)
-    plt.yticks(fontsize=12)
-    plt.tight_layout()
-    st.pyplot(plt)
-
-# Function to display descriptive statistics
-def descriptive_stats(data):
-    st.write("### Descriptive Statistics")
-    st.write(data.describe())
-
-# Visualization for Boxplot
-def plot_boxplot(data, features, target):
-    st.write("### Box Plot of Features and Target")
-    plt.figure(figsize=(15, 6))
-    sns.boxplot(data=data[features + [target]])
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    st.pyplot(plt)
-
-# Visualization for Frequency Distribution
-def plot_histograms(data, features, target):
-    st.write("### Frequency Distribution of Features and Target")
-    n_plots = len(features) + 1
-    n_cols = 2
-    n_rows = int(np.ceil(n_plots / n_cols))
-    
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 5 * n_rows))
-    axes = axes.flatten()
-
-    for i, feature in enumerate(features + [target]):
-        sns.histplot(data[feature], kde=True, color='skyblue', edgecolor='black', ax=axes[i])
-        axes[i].set_title(f'Distribution of {feature}', fontsize=14)
-        axes[i].set_xlabel(feature)
-        axes[i].set_ylabel('Count')
-
-    plt.tight_layout()
-    st.pyplot(fig)
-
 # Load the model and scaler
 model, scaler = load_model_and_scaler()
-
-# Streamlit app title
-st.title("Time Series Waiting Time Prediction App")
 
 # Sidebar for file upload or manual entry
 st.sidebar.header("Data Input Options")
@@ -130,8 +78,8 @@ if data_source == "Upload CSV/XLSX File":
             data['Predicted_WaitingTime'] = predictions
             st.write(data[['Predicted_WaitingTime']])
 
-            # Display fancy prediction card for the first prediction (or the average)
-            display_fancy_prediction(predictions[0])  # You can adjust which prediction to display prominently
+            # Display fancy prediction card for the first prediction
+            display_fancy_prediction(predictions[0])
 
         except Exception as e:
             st.error(f"Error processing the file: {e}")
@@ -171,15 +119,44 @@ elif data_source == "Manual Input":
 st.sidebar.header("Visualization Options")
 visualization = st.sidebar.selectbox("Choose a Visualization", ("Descriptive Analysis", "Box Plot", "Frequency Distribution", "Actual vs Predicted"))
 
-if uploaded_file is not None:
+# Ensure uploaded_file is defined only when necessary
+if data_source == "Upload CSV/XLSX File" and uploaded_file is not None:
     # Visualization section
     if visualization == "Descriptive Analysis":
-        descriptive_stats(data)
+        st.write("### Descriptive Statistics")
+        st.write(data.describe())
     elif visualization == "Box Plot":
-        plot_boxplot(data, features, target)
+        st.write("### Box Plot of Features and Target")
+        plt.figure(figsize=(15, 6))
+        sns.boxplot(data=data[features + [target]])
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        st.pyplot(plt)
     elif visualization == "Frequency Distribution":
-        plot_histograms(data, features, target)
+        st.write("### Frequency Distribution of Features and Target")
+        n_plots = len(features) + 1
+        n_cols = 2
+        n_rows = int(np.ceil(n_plots / n_cols))
+        
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 5 * n_rows))
+        axes = axes.flatten()
+
+        for i, feature in enumerate(features + [target]):
+            sns.histplot(data[feature], kde=True, color='skyblue', edgecolor='black', ax=axes[i])
+            axes[i].set_title(f'Distribution of {feature}', fontsize=14)
+            axes[i].set_xlabel(feature)
+            axes[i].set_ylabel('Count')
+
+        plt.tight_layout()
+        st.pyplot(fig)
     elif visualization == "Actual vs Predicted" and 'waitingTime' in data.columns:
-        plot_actual_vs_predicted(data['waitingTime'], data['Predicted_WaitingTime'], "Best Model")
+        st.write("### Actual vs Predicted Plot")
+        plt.figure(figsize=(12, 8))
+        sns.regplot(x=data['waitingTime'], y=data['Predicted_WaitingTime'], scatter_kws={'alpha':0.5}, line_kws={'color':'red'})
+        plt.xlabel('Actual Waiting Time', fontsize=14)
+        plt.ylabel('Predicted Waiting Time', fontsize=14)
+        plt.title("Actual vs Predicted", fontsize=16)
+        plt.tight_layout()
+        st.pyplot(plt)
     else:
         st.warning("Actual vs Predicted plot requires the 'waitingTime' column in the uploaded file.")
