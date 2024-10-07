@@ -409,7 +409,7 @@ def main():
                 plt.tight_layout()
                 st.pyplot(fig)
             
-elif viz_type == "Actual vs Predicted" and target in data.columns:
+            elif viz_type == "Actual vs Predicted" and target in data.columns:
                 fig, ax = plt.subplots(figsize=(10, 6))
                 sns.scatterplot(data=data, x=target, y='Predicted_WaitingTime')
                 plt.plot([data[target].min(), data[target].max()], [data[target].min(), data[target].max()], 'r--', lw=2)
