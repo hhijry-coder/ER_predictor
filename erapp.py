@@ -51,10 +51,6 @@ st.markdown("""
 sns.set_style("whitegrid")
 plt.style.use("seaborn-v0_8-darkgrid")
 
-# Function to load and display the image
-def display_sci_fi_hospital_image():
-    image_url = "https://raw.githubusercontent.com/hhijry-coder/ER_predictor/main/Leonardo_Anime_XL_Futuristic_hospital_lobby_with_holographic_w_1.jpg"
-    st.image(image_url, caption="Futuristic Hospital Lobby", use_column_width=True)
 
 # Cache successful geocoding results
 @lru_cache(maxsize=100)
@@ -270,7 +266,7 @@ def main():
     st.title("🏥 Hospital Wait Time Predictor")
     st.write("Predict hospital waiting times and explore nearby hospitals")
 
-    display_sci_fi_hospital_image()
+    
 
     model, scaler = load_model_and_scaler()
     if model is None or scaler is None:
