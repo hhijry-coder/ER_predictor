@@ -16,7 +16,7 @@ import time
 
 # Set page config
 st.set_page_config(
-    page_title="Emergency room Wait Time Predictor & Hospital Locator",
+    page_title="Emergency Room Wait Time Predictor & Hospital Locator",
     page_icon="🏥",
     layout="wide"
 )
