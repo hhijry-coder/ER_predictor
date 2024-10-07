@@ -12,7 +12,7 @@ import seaborn as sns
 
 # Set style for seaborn plots
 sns.set_style("whitegrid")
-plt.style.use("sns")
+plt.style.use("seaborn-dark")
 
 # Load the saved model and scaler
 @st.cache_resource
