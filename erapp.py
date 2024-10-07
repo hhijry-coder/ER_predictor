@@ -7,9 +7,12 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from io import StringIO
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 # Set style for seaborn plots
 sns.set_style("whitegrid")
-plt.style.use("seaborn-darkgrid")
+plt.style.use("seaborn-dark")
 
 # Load the saved model and scaler
 @st.cache_resource
