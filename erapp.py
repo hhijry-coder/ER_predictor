@@ -263,7 +263,7 @@ def display_fancy_prediction(predicted_time):
     )
 
 def main():
-    st.title("🏥 Hospital Wait Time Predictor")
+    st.title("🏥 Emergency room Wait Time Predictor & Hospital Locator")
     st.write("Predict hospital waiting times and explore nearby hospitals")
 
     
