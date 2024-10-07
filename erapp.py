@@ -41,73 +41,122 @@ st.markdown("""
 sns.set_style("whitegrid")
 plt.style.use("seaborn-v0_8-darkgrid")
 
-# Function to get city coordinates using geopy
-def get_city_coordinates(city_name):
-    try:
-        geolocator = Nominatim(user_agent="hospital_finder")
-        location = geolocator.geocode(city_name)
-        if location:
-            return location.latitude, location.longitude
-        return None
-    except GeocoderTimedOut:
-        return None
-
-# Function to get nearby hospitals using OpenStreetMap Overpass API
 def get_hospitals_near_city(lat, lon, radius=5000):
-    overpass_url = "http://overpass.api.openstreetmap.org/api/interpreter"
+    # List of Overpass API endpoints
+    overpass_endpoints = [
+        "https://overpass-api.de/api/interpreter",
+        "https://lz4.overpass-api.de/api/interpreter",
+        "https://z.overpass-api.de/api/interpreter"
+    ]
+    
     query = f"""
-    [out:json];
+    [out:json][timeout:25];
     (
       node["amenity"="hospital"](around:{radius},{lat},{lon});
       way["amenity"="hospital"](around:{radius},{lat},{lon});
       relation["amenity"="hospital"](around:{radius},{lat},{lon});
     );
-    out center;
+    out body center qt;
     """
-    response = requests.get(overpass_url, params={'data': query})
-    data = response.json()
     
-    hospitals = []
-    for element in data['elements']:
-        if element['type'] == 'node':
-            lat = element['lat']
-            lon = element['lon']
-        else:
-            lat = element['center']['lat']
-            lon = element['center']['lon']
+    # Try each endpoint until successful
+    for endpoint in overpass_endpoints:
+        try:
+            response = requests.get(
+                endpoint,
+                params={'data': query},
+                timeout=30,
+                headers={'User-Agent': 'Hospital-Wait-Time-Predictor/1.0'}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                hospitals = []
+                
+                for element in data.get('elements', []):
+                    try:
+                        if element['type'] == 'node':
+                            lat = element['lat']
+                            lon = element['lon']
+                        else:
+                            lat = element.get('center', {}).get('lat')
+                            lon = element.get('center', {}).get('lon')
+                            
+                            if lat is None or lon is None:
+                                continue
+                        
+                        name = element.get('tags', {}).get('name', 'Unnamed Hospital')
+                        hospitals.append({
+                            'name': name,
+                            'lat': lat,
+                            'lon': lon
+                        })
+                    except KeyError:
+                        continue
+                
+                return hospitals
+                
+        except requests.exceptions.RequestException as e:
+            last_error = str(e)
+            continue
+            
+    # If all endpoints fail, handle the error gracefully
+    st.error(f"""
+        Unable to fetch hospital data. Please try again later.
+        Error: {last_error}
         
-        name = element.get('tags', {}).get('name', 'Unnamed Hospital')
-        hospitals.append({
-            'name': name,
-            'lat': lat,
-            'lon': lon
-        })
-    
-    return hospitals
+        Alternative options:
+        1. Try a different city
+        2. Refresh the page
+        3. Check your internet connection
+    """)
+    return []
 
-# Function to create and display the map
+# Add these helper functions for better error handling
+def is_valid_coordinates(lat, lon):
+    try:
+        return (
+            isinstance(lat, (int, float)) and
+            isinstance(lon, (int, float)) and
+            -90 <= lat <= 90 and
+            -180 <= lon <= 180
+        )
+    except:
+        return False
+
+# Update the map display function to handle errors better
 def display_hospital_map(hospitals, city_coords):
-    m = folium.Map(location=city_coords, zoom_start=12)
-    
-    # Add marker cluster
-    marker_cluster = MarkerCluster().add_to(m)
-    
-    # Add markers for each hospital
-    for hospital in hospitals:
+    try:
+        if not is_valid_coordinates(*city_coords):
+            st.error("Invalid coordinates provided")
+            return None
+            
+        m = folium.Map(location=city_coords, zoom_start=12)
+        
+        # Add marker cluster
+        marker_cluster = MarkerCluster().add_to(m)
+        
+        # Add markers for each hospital
+        for hospital in hospitals:
+            if is_valid_coordinates(hospital['lat'], hospital['lon']):
+                folium.Marker(
+                    location=[hospital['lat'], hospital['lon']],
+                    popup=hospital['name'],
+                    icon=folium.Icon(color='red', icon='plus', prefix='fa')
+                ).add_to(marker_cluster)
+        
+        # Add marker for city center
         folium.Marker(
-            location=[hospital['lat'], hospital['lon']],
-            popup=hospital['name'],
-            icon=folium.Icon(color='red', icon='plus', prefix='fa')
-        ).add_to(marker_cluster)
-    
-    # Add marker for city center
-    folium.Marker(
-        location=city_coords,
-        popup='City Center',
-        icon=folium.Icon(color='blue', icon='info-sign')
-    ).add_to(m)
-    
-    return m
+            location=city_coords,
+            popup='City Center',
+            icon=folium.Icon(color='blue', icon='info-sign')
+        ).add_to(m)
+        
+        return m
+        
+    except Exception as e:
+        st.error(f"Error creating map: {str(e)}")
+        return None
 
 # Load the saved model and scaler
 @st.cache_resource
@@ -224,21 +273,31 @@ def main():
         city_name = st.text_input("Enter a City Name to View Nearby Hospitals")
         
         if city_name:
-            city_coords = get_city_coordinates(city_name)
+            with st.spinner("Fetching city coordinates..."):
+                city_coords = get_city_coordinates(city_name)
+                
             if city_coords:
-                hospitals = get_hospitals_near_city(*city_coords)
+                with st.spinner("Searching for nearby hospitals..."):
+                    hospitals = get_hospitals_near_city(*city_coords)
+                    
                 if hospitals:
                     st.success(f"Found {len(hospitals)} hospitals near {city_name}")
-                    city_map = display_hospital_map(hospitals, city_coords)
-                    st_folium(city_map, width=800, height=500)
                     
-                    with st.expander("View Hospital List"):
-                        for idx, hospital in enumerate(hospitals, 1):
-                            st.write(f"{idx}. {hospital['name']}")
+                    with st.spinner("Creating map..."):
+                        city_map = display_hospital_map(hospitals, city_coords)
+                        
+                    if city_map is not None:
+                        st_folium(city_map, width=800, height=500)
+                        
+                        with st.expander("View Hospital List"):
+                            for idx, hospital in enumerate(hospitals, 1):
+                                st.write(f"{idx}. {hospital['name']}")
+                    else:
+                        st.error("Failed to create map. Please try again.")
                 else:
-                    st.warning("No hospitals found in the area.")
+                    st.warning("No hospitals found in the area. Try increasing the search radius or checking a different location.")
             else:
-                st.error("Could not find the specified city. Please check the spelling.")
+                st.error("Could not find the specified city. Please check the spelling or try a different city.")
 
         # Visualization section
         st.subheader("Data Visualizations")
