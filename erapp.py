@@ -284,7 +284,7 @@ def main():
 
         if data_source == "Manual Input":
             st.sidebar.subheader("Input values manually")
-            Totaltime = st.sidebar.number_input("Total Time (Waiting time + Service Time)", min_value=0.0, value=10.0)
+            X3 = st.sidebar.number_input("Total Time (Waiting time + Service Time)", min_value=0.0, value=10.0)
             hour = st.sidebar.slider("Hour", 0, 23, 12)
             minutes = st.sidebar.slider("Minutes", 0, 59, 30)
             waitingPeople = st.sidebar.number_input("Waiting People", min_value=0, value=5)
@@ -296,7 +296,7 @@ def main():
             serviceTime = st.sidebar.number_input("Service Time", min_value=0.0, value=20.0)
 
             user_data = pd.DataFrame({
-                'X3': [X3],
+                'Total Time': [X3],
                 'hour': [hour],
                 'minutes': [minutes],
                 'waitingPeople': [waitingPeople],
