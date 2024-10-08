@@ -213,7 +213,7 @@ def display_hospital_map(hospitals, city_coords):
         marker_cluster = MarkerCluster().add_to(m)
         
         for hospital in hospitals:
-            if is_valid_coordinates(hospital['lat'], hospital['lon']):
+            if is_valid_coordinates(hospital['lat'], hospital['lon']]):
                 folium.Marker(
                     location=[hospital['lat'], hospital['lon']],
                     popup=hospital['name'],
@@ -266,13 +266,12 @@ def main():
     st.title("🏥 Emergency Room Wait Time Predictor & Hospital Locator")
     st.write("Predict hospital waiting times and explore nearby hospitals")
 
-    
-
     model, scaler = load_model_and_scaler()
     if model is None or scaler is None:
         st.error("Failed to load model and scaler. Please check the files.")
         return
 
+    # Features list: Rename 'Total Time' back to 'X3'
     features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
     target = 'waitingTime'
 
@@ -284,7 +283,8 @@ def main():
 
         if data_source == "Manual Input":
             st.sidebar.subheader("Input values manually")
-            X3 = st.sidebar.number_input("Total Time (Waiting time + Service Time)", min_value=0.0, value=10.0)
+            # Renaming Total Time to X3 for consistency with model
+            total_time = st.sidebar.number_input("Total Time (Waiting time + Service Time)", min_value=0.0, value=10.0)
             hour = st.sidebar.slider("Hour", 0, 23, 12)
             minutes = st.sidebar.slider("Minutes", 0, 59, 30)
             waitingPeople = st.sidebar.number_input("Waiting People", min_value=0, value=5)
@@ -296,7 +296,7 @@ def main():
             serviceTime = st.sidebar.number_input("Service Time", min_value=0.0, value=20.0)
 
             user_data = pd.DataFrame({
-                'Total Time': [X3],
+                'X3': [total_time],  # Renaming 'Total Time' to 'X3'
                 'hour': [hour],
                 'minutes': [minutes],
                 'waitingPeople': [waitingPeople],
@@ -363,76 +363,9 @@ def main():
                     else:
                         st.error("Failed to create map. Please try again.")
                 else:
-                    st.warning("""
-                        No hospitals found in the area. 
-                        Try:
-                        1. Increasing the search radius
-                        2. Checking a different location
-                        3. Using a more specific address
-                    """)
+                    st.warning("""No hospitals found in the area. Try increasing the search radius or using a more specific address.""")
             else:
-                st.error("""
-                    Could not find the specified location. 
-                    Please:
-                    1. Check the spelling
-                    2. Add the country name (e.g., "Paris, France")
-                    3. Try a more specific location
-                """)
-
-        if data_source == "Upload CSV/XLSX File" and 'data' in locals():
-            st.subheader("Data Visualizations")
-            viz_type = st.selectbox(
-                "Choose Visualization Type",
-                ["Descriptive Analysis", "Box Plot", "Frequency Distribution", "Actual vs Predicted"]
-            )
-
-            if viz_type == "Descriptive Analysis":
-                st.write("### Descriptive Statistics")
-                st.write(data.describe())
-            
-            elif viz_type == "Box Plot":
-                fig, ax = plt.subplots(figsize=(12, 6))
-                sns.boxplot(data=data[features + [target]])
-                plt.xticks(rotation=45)
-                plt.tight_layout()
-                st.pyplot(fig)
-            
-            elif viz_type == "Frequency Distribution":
-                n_features = len(features) + 1
-                n_cols = 2
-                n_rows = (n_features + 1) // 2
-                
-                fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 5 * n_rows))
-                axes = axes.flatten()
-                
-                for i, feature in enumerate(features + [target]):
-                    sns.histplot(data[feature], kde=True, ax=axes[i])
-                    axes[i].set_title(f'Distribution of {feature}')
-                
-                plt.tight_layout()
-                st.pyplot(fig)
-            
-            elif viz_type == "Actual vs Predicted" and target in data.columns:
-                fig, ax = plt.subplots(figsize=(10, 6))
-                sns.scatterplot(data=data, x=target, y='Predicted_WaitingTime')
-                plt.plot([data[target].min(), data[target].max()], [data[target].min(), data[target].max()], 'r--', lw=2)
-                plt.xlabel('Actual Waiting Time')
-                plt.ylabel('Predicted Waiting Time')
-                plt.title('Actual vs Predicted Waiting Time')
-                st.pyplot(fig)
-
-    st.sidebar.info("""
-        This app predicts hospital waiting times based on various factors.
-        Use the sidebar to input data or upload a file, and explore nearby hospitals on the map.
-    """)
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### About")
-    st.sidebar.markdown("""
-        This application was created to help predict hospital waiting times 
-        and provide information about nearby hospitals. It uses machine learning 
-        to make predictions based on historical data.
-    """)
+                st.error("Could not find the specified location. Please check the spelling or try a more specific location.")
 
 if __name__ == "__main__":
     main()
