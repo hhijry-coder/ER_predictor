@@ -213,7 +213,7 @@ def display_hospital_map(hospitals, city_coords):
         marker_cluster = MarkerCluster().add_to(m)
         
         for hospital in hospitals:
-            if is_valid_coordinates(hospital['lat'], hospital['lon']]):
+            if is_valid_coordinates(hospital['lat'], hospital['lon']):  # Fixed closing parenthesis here
                 folium.Marker(
                     location=[hospital['lat'], hospital['lon']],
                     popup=hospital['name'],
@@ -231,6 +231,7 @@ def display_hospital_map(hospitals, city_coords):
     except Exception as e:
         st.error(f"Error creating map: {str(e)}")
         return None
+
 
 @st.cache_resource
 def load_model_and_scaler():
