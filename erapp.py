@@ -109,9 +109,9 @@ def visualize_batch_data(data, predictions, target):
         data['Error'] = data[target] - data['Predicted_WaitingTime']
     
     # Create subplots
-    fig = make_subplots(rows=2, cols=2,
-                        subplot_titles=("Actual vs Predicted", "Feature Box Plots", 
-                                        "Feature Distributions", "Prediction Error Distribution"))
+    fig = make_subplots(rows=3, cols=2,
+                        subplot_titles=("Actual vs Predicted", "Prediction Error Distribution", 
+                                        *features))
 
     # Actual vs Predicted Scatter Plot with Best Fit Line
     if target in data.columns:
@@ -130,21 +130,21 @@ def visualize_batch_data(data, predictions, target):
                 row=1, col=1
             )
 
-    # Box Plots and Histograms for each feature
-    features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
-    for feature in features:
-        fig.add_trace(go.Box(y=data[feature], name=feature), row=1, col=2)
-        fig.add_trace(go.Histogram(x=data[feature], name=feature), row=2, col=1)
-
     # Prediction Error Histogram
     if target in data.columns:
-        fig.add_trace(go.Histogram(x=data['Error'], nbinsx=50, name='Error'), row=2, col=2)
+        fig.add_trace(go.Histogram(x=data['Error'], nbinsx=50, name='Error'), row=1, col=2)
 
-    fig.update_layout(height=1000, showlegend=False,
+    # Individual frequency distributions for each feature
+    for i, feature in enumerate(features):
+        row = (i // 2) + 2
+        col = (i % 2) + 1
+        fig.add_trace(go.Histogram(x=data[feature], name=feature), row=row, col=col)
+
+    fig.update_layout(height=1200, showlegend=False,
                       title_text="Batch Data Visualizations",
                       template="plotly_white")
     fig.update_xaxes(title_text=target if target in data.columns else "", row=1, col=1)
-    fig.update_yaxes(title_text="Waiting Time (minutes)", row=1, col=1)
+    fig.update_yaxes(title_text="Predicted Waiting Time (minutes)", row=1, col=1)
     st.plotly_chart(fig, use_container_width=True)
 
 # Hospital Locator functions (unchanged)
@@ -332,6 +332,9 @@ def main():
     if model is None or scaler is None:
         st.error("Failed to load model and scaler. Please check the files.")
         return
+
+    # Add the app title to the main page
+    st.title("HajjCare Flow Optimizer")
 
     # Features and target
     features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
