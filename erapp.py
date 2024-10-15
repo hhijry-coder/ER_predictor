@@ -100,7 +100,7 @@ def visualize_manual_input(user_data, predicted_time):
     fig.update_layout(height=600, showlegend=False, title_text="Input Feature Values")
     st.plotly_chart(fig, use_container_width=True)
 
-def visualize_batch_data(data, predictions, target):
+def visualize_batch_data(data, predictions, target, features):
     st.subheader("Visualizations")
     
     # Calculate prediction errors
@@ -408,7 +408,7 @@ def main():
                 X_new_scaled = preprocess_data(data, features, scaler)
                 predictions = make_predictions(model, X_new_scaled)
 
-                visualize_batch_data(data, predictions, target)
+                visualize_batch_data(data, predictions, target, features)
 
             except Exception as e:
                 st.error(f"Error processing file: {str(e)}")
