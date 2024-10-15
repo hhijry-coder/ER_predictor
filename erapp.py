@@ -12,6 +12,7 @@ import requests
 from folium.plugins import MarkerCluster
 from functools import lru_cache
 import time
+import streamlit as st
 
 # Set page config
 st.set_page_config(
