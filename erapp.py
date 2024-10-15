@@ -2,8 +2,9 @@ import os
 import pandas as pd
 import numpy as np
 import pickle
+import plotly.express as px
+import plotly.graph_objects as go
 from tensorflow.keras.models import load_model
-import matplotlib.pyplot as plt
 import seaborn as sns
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
@@ -50,10 +51,6 @@ st.markdown("""
     }
     </style>
     """, unsafe_allow_html=True)
-
-# Set style for seaborn plots
-sns.set_style("whitegrid")
-plt.style.use("seaborn-v0_8-darkgrid")
 
 # Cache successful geocoding results
 @lru_cache(maxsize=100)
@@ -264,6 +261,23 @@ def display_fancy_prediction(predicted_time):
         unsafe_allow_html=True
     )
 
+# Function to plot based on user selection
+def plot_visualization(data, predictions, selected_plot):
+    if selected_plot == "Actual vs Predicted":
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=np.arange(len(predictions)), y=data['waitingTime'], mode='lines', name='Actual'))
+        fig.add_trace(go.Scatter(x=np.arange(len(predictions)), y=predictions, mode='lines+markers', name='Predicted'))
+        fig.update_layout(title="Actual vs Predicted Waiting Time", xaxis_title="Instance", yaxis_title="Waiting Time (mins)")
+        st.plotly_chart(fig)
+
+    elif selected_plot == "Box Plot":
+        fig = px.box(data, y="waitingTime", title="Box Plot of Waiting Times")
+        st.plotly_chart(fig)
+
+    elif selected_plot == "Histogram":
+        fig = px.histogram(data, x="waitingTime", title="Histogram of Waiting Times")
+        st.plotly_chart(fig)
+
 def main():
     st.title("🏥 HajjCare Flow Optimizer")
     st.write("Predict hospital waiting times and explore nearby hospitals")
@@ -312,6 +326,9 @@ def main():
                 predictions = make_predictions(model, X_new_scaled)
                 if predictions is not None:
                     display_fancy_prediction(predictions[0])
+                    st.write("### Select a Plot")
+                    selected_plot = st.selectbox("Choose Plot", ["Actual vs Predicted", "Box Plot", "Histogram"])
+                    plot_visualization(user_data, predictions, selected_plot)
 
         else:
             uploaded_file = st.sidebar.file_uploader("Upload your CSV or XLSX file", type=["csv", "xlsx"])
@@ -334,6 +351,9 @@ def main():
                             st.write("### Predictions")
                             st.write(data[['Predicted_WaitingTime']])
                             display_fancy_prediction(predictions[0])
+                            st.write("### Select a Plot")
+                            selected_plot = st.selectbox("Choose Plot", ["Actual vs Predicted", "Box Plot", "Histogram"])
+                            plot_visualization(data, predictions, selected_plot)
                     else:
                         st.error("Uploaded data does not contain required features.")
 
