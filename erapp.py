@@ -4,6 +4,7 @@ import pickle
 from tensorflow.keras.models import load_model
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
 import folium
@@ -222,7 +223,7 @@ def display_hospital_map(hospitals, city_coords):
         ).add_to(m)
         
         return m
-            
+        
     except Exception as e:
         st.error(f"Error creating map: {str(e)}")
         return None
@@ -257,280 +258,209 @@ def display_fancy_prediction(predicted_time):
         unsafe_allow_html=True
     )
 
-def main():
-    st.title("🏥 HajjCare Flow Optimizer")
-    st.write("Predict hospital waiting times and explore nearby hospitals")
-
-    model, scaler = load_model_and_scaler()
-    if model is None or scaler is None:
-        st.error("Failed to load model and scaler. Please check the files.")
-        return
-
-    # Features list: Rename 'Total Time' back to 'X3'
-    features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
-    target = 'waitingTime'
-
-    # Sidebar for navigation
-    st.sidebar.header("Navigation")
-    page = st.sidebar.radio("Go to", ["Predictor", "Visualizations", "Hospital Locator"])
-
-    if page == "Predictor":
-        predict_page(features, model, scaler)
-    elif page == "Visualizations":
-        visualizations_page(features, model, scaler, target)
-    elif page == "Hospital Locator":
-        hospital_locator_page()
-
-def predict_page(features, model, scaler):
+def visualize_manual_input(user_data, prediction):
+    # Create a two-column layout for input and visualization
     col1, col2 = st.columns([1, 2])
-
+    
     with col1:
-        st.header("Input Options")
-        data_source = st.radio("Choose the data source", ("Manual Input", "Upload CSV/XLSX File"))
-
-        if data_source == "Manual Input":
-            st.subheader("Input values manually")
-            # Renaming Total Time to X3 for consistency with model
-            total_time = st.number_input("Total Time (Waiting time + Service Time)", min_value=0.0, value=10.0)
-            hour = st.slider("Hour", 0, 23, 12)
-            minutes = st.slider("Minutes", 0, 59, 30)
-            waitingPeople = st.number_input("Waiting People", min_value=0, value=5)
-            dayOfWeek = st.selectbox(
-                "Day of the Week", 
-                options=[0, 1, 2, 3, 4, 5, 6],
-                format_func=lambda x: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][x]
-            )
-            serviceTime = st.number_input("Service Time", min_value=0.0, value=20.0)
-
-            user_data = pd.DataFrame({
-                'X3': [total_time],  # Renaming 'Total Time' to 'X3'
-                'hour': [hour],
-                'minutes': [minutes],
-                'waitingPeople': [waitingPeople],
-                'dayOfWeek': [dayOfWeek],
-                'serviceTime': [serviceTime]
-            })
-
-            st.write("### Your Input Data")
-            st.write(user_data)
-
-            if st.button("Predict Waiting Time"):
-                X_new_scaled = preprocess_data(user_data, features, scaler)
-                predictions = make_predictions(model, X_new_scaled)
-                predicted_time = predictions[0]
-                display_fancy_prediction(predicted_time)
-
-                # Display Visualizations for Manual Input
-                with st.expander("View Visualizations"):
-                    visualize_manual_input(user_data, predicted_time)
-
-        else:
-            uploaded_file = st.file_uploader("Upload your CSV or XLSX file", type=["csv", "xlsx"])
-
-            if uploaded_file is not None:
-                try:
-                    if uploaded_file.name.endswith(".csv"):
-                        data = pd.read_csv(uploaded_file)
-                    else:
-                        data = pd.read_excel(uploaded_file)
-
-                    st.write("### Uploaded Data Preview")
-                    st.write(data.head())
-
-                    # Ensure required features are present
-                    if not set(features).issubset(data.columns):
-                        st.error("Uploaded data does not contain all the required features.")
-                        return
-
-                    X_new_scaled = preprocess_data(data, features, scaler)
-                    predictions = make_predictions(model, X_new_scaled)
-                    data['Predicted_WaitingTime'] = predictions
-                    
-                    st.write("### Predictions")
-                    st.write(data[['Predicted_WaitingTime']])
-
-                    # Display Visualizations for Batch Data
-                    with st.expander("View Visualizations"):
-                        visualize_batch_data(data, predictions)
-
-                except Exception as e:
-                    st.error(f"Error processing file: {str(e)}")
-
+        st.write("### Your Input Data")
+        st.write(user_data)
+    
     with col2:
-        st.header("Visualizations")
-        # This column is reserved for displaying visualizations from manual input or batch upload
-        st.info("Visualizations will appear here after making predictions.")
+        st.write("### Visualization of Input Features")
+        fig = make_subplots(rows=2, cols=1, subplot_titles=("Feature Values", "Predicted Waiting Time"))
+        
+        # Bar chart for feature values
+        fig.add_trace(
+            go.Bar(
+                x=user_data.columns,
+                y=user_data.values.flatten(),
+                marker_color='indigo'
+            ),
+            row=1, col=1
+        )
+        
+        # Predicted waiting time as a separate bar
+        fig.add_trace(
+            go.Bar(
+                x=['Predicted Waiting Time'],
+                y=[prediction],
+                marker_color='green'
+            ),
+            row=2, col=1
+        )
+        
+        fig.update_layout(height=600, showlegend=False, title_text="Manual Input Visualization")
+        st.plotly_chart(fig, use_container_width=True)
 
-def visualize_manual_input(user_data, predicted_time):
-    # Since it's a single data point, visualizations will be limited
-    st.write("### Visualization for Manual Input")
-
-    # Display a horizontal bar chart for the input features
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=user_data.iloc[0],
-        y=user_data.columns,
-        orientation='h',
-        marker=dict(color='rgba(50, 171, 96, 0.6)',
-                    line=dict(color='rgba(50, 171, 96, 1.0)', width=1))
-    ))
-    fig.update_layout(title="Input Features", xaxis_title="Value", yaxis_title="Feature")
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Display the predicted waiting time against the input features
-    fig2 = px.scatter(
-        x=user_data.iloc[0],
-        y=['Predicted Waiting Time'] * len(user_data.columns),
-        size=[20] * len(user_data.columns),
-        color=['red'] * len(user_data.columns),
-        labels={"x": "Feature Value", "y": "Metric"},
-        title="Predicted Waiting Time Relative to Input Features"
-    )
-    st.plotly_chart(fig2, use_container_width=True)
-
-def visualize_batch_data(data, predictions):
+def visualize_batch_data(data, predictions, target):
     st.write("### Visualizations for Batch Data")
 
     # Actual vs Predicted Scatter Plot
-    if 'waitingTime' in data.columns:
+    if target in data.columns:
         fig1 = px.scatter(
-            data, x='waitingTime', y='Predicted_WaitingTime',
+            data, x=target, y='Predicted_WaitingTime',
             trendline="ols",
             title="Actual vs Predicted Waiting Time",
-            labels={"waitingTime": "Actual Waiting Time", "Predicted_WaitingTime": "Predicted Waiting Time"}
+            labels={target: "Actual Waiting Time", 'Predicted_WaitingTime': "Predicted Waiting Time"}
         )
         st.plotly_chart(fig1, use_container_width=True)
     else:
         st.warning("The uploaded data does not contain the 'waitingTime' column required for Actual vs Predicted visualization.")
 
-    # Box Plots for Each Feature
-    st.write("#### Box Plots of Features")
-    for feature in ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']:
-        fig = px.box(data, y=feature, title=f"Box Plot of {feature}")
-        st.plotly_chart(fig, use_container_width=True)
+    # Box Plots and Frequency Histograms in Subplots
+    features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
+    num_features = len(features)
+    
+    fig = make_subplots(rows=num_features, cols=2, subplot_titles=[f"{feature} Box Plot" for feature in features] + [f"{feature} Frequency Histogram" for feature in features])
 
-    # Frequency Histograms for Each Feature
-    st.write("#### Frequency Histograms of Features")
-    for feature in ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']:
-        fig = px.histogram(data, x=feature, nbins=30, title=f"Frequency Histogram of {feature}")
-        st.plotly_chart(fig, use_container_width=True)
+    for i, feature in enumerate(features, 1):
+        # Box Plot
+        fig.add_trace(
+            go.Box(y=data[feature], name=f"{feature}"),
+            row=i, col=1
+        )
+        
+        # Frequency Histogram
+        fig.add_trace(
+            go.Histogram(x=data[feature], name=f"{feature}"),
+            row=i, col=2
+        )
+    
+    fig.update_layout(height=300*num_features, showlegend=False, title_text="Box Plots and Frequency Histograms")
+    st.plotly_chart(fig, use_container_width=True)
 
     # Prediction Error Histogram
-    if 'waitingTime' in data.columns:
-        data['Error'] = data['waitingTime'] - data['Predicted_WaitingTime']
-        fig = px.histogram(data, x='Error', nbins=50, title="Model Prediction Error Distribution")
-        st.plotly_chart(fig, use_container_width=True)
+    if target in data.columns:
+        data['Error'] = data[target] - data['Predicted_WaitingTime']
+        fig_error = px.histogram(data, x='Error', nbins=50, title="Model Prediction Error Distribution")
+        st.plotly_chart(fig_error, use_container_width=True)
     else:
         st.warning("Cannot display Prediction Error Histogram as 'waitingTime' column is missing.")
 
-def visualizations_page(features, model, scaler, target):
-    st.header("Data Visualizations")
-    
-    # Select Visualization
-    visualization = st.selectbox(
-        "Select a Visualization",
-        ("Actual vs Predicted", "Box Plots", "Frequency Histograms", "Prediction Error Histogram")
-    )
-    
-    # Upload Data
-    st.subheader("Upload Data for Visualization")
-    uploaded_file = st.file_uploader("Upload your CSV or XLSX file", type=["csv", "xlsx"])
+def main():
+    # Load model and scaler
+    model, scaler = load_model_and_scaler()
+    if model is None or scaler is None:
+        st.error("Failed to load model and scaler. Please check the files.")
+        return
 
-    if uploaded_file is not None:
-        try:
-            if uploaded_file.name.endswith(".csv"):
-                data = pd.read_csv(uploaded_file)
-            else:
-                data = pd.read_excel(uploaded_file)
-            
-            st.write("### Uploaded Data Preview")
-            st.write(data.head())
+    # Features and target
+    features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
+    target = 'waitingTime'
 
-            # Check if required features are present
-            if not set(features).issubset(data.columns):
-                st.error("Uploaded data does not contain all the required features.")
-                return
+    # Sidebar navigation
+    st.sidebar.title("Navigation")
+    page = st.sidebar.radio("Go to", ["Manual Input Visualization", "Batch Data Visualization", "Hospital Locator"])
 
-            # Check if target column exists for Actual vs Predicted and Prediction Error
-            if visualization in ["Actual vs Predicted", "Prediction Error Histogram"] and target not in data.columns:
-                st.error(f"Uploaded data must contain the '{target}' column for this visualization.")
-                return
+    if page == "Manual Input Visualization":
+        st.header("Manual Input Visualization")
+        col1, col2 = st.columns([1, 2])
 
-            X_new_scaled = preprocess_data(data, features, scaler)
-            predictions = make_predictions(model, X_new_scaled)
-            data['Predicted_WaitingTime'] = predictions
+        with col1:
+            st.subheader("Input values manually")
+            # Renaming Total Time to X3 for consistency with model
+            total_time = st.number_input("Total Time (Waiting time + Service Time)", min_value=0.0, value=10.0)
+            hour = st.slider("Hour", 0, 23, 12)
+            minutes = st.slider("Minutes", 0, 59, 30)
+            waiting_people = st.number_input("Waiting People", min_value=0, value=5)
+            day_of_week = st.selectbox(
+                "Day of the Week", 
+                options=[0, 1, 2, 3, 4, 5, 6],
+                format_func=lambda x: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][x]
+            )
+            service_time = st.number_input("Service Time", min_value=0.0, value=20.0)
 
-            if visualization == "Actual vs Predicted":
-                if target in data.columns:
-                    fig = px.scatter(
-                        data, x=target, y='Predicted_WaitingTime',
-                        trendline="ols",
-                        title="Actual vs Predicted Waiting Time",
-                        labels={target: "Actual Waiting Time", 'Predicted_WaitingTime': "Predicted Waiting Time"}
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+            user_data = pd.DataFrame({
+                'X3': [total_time],
+                'hour': [hour],
+                'minutes': [minutes],
+                'waitingPeople': [waiting_people],
+                'dayOfWeek': [day_of_week],
+                'serviceTime': [service_time]
+            })
+
+            if st.button("Predict Waiting Time"):
+                X_new_scaled = preprocess_data(user_data, features, scaler)
+                predictions = make_predictions(model, X_new_scaled)
+                display_fancy_prediction(predictions[0])
+
+                # Visualize manual input
+                visualize_manual_input(user_data, predictions[0])
+
+    elif page == "Batch Data Visualization":
+        st.header("Batch Data Visualization")
+        uploaded_file = st.file_uploader("Upload your CSV or XLSX file", type=["csv", "xlsx"])
+
+        if uploaded_file is not None:
+            try:
+                if uploaded_file.name.endswith(".csv"):
+                    data = pd.read_csv(uploaded_file)
                 else:
-                    st.error(f"Cannot create Actual vs Predicted plot because '{target}' column is missing.")
-            
-            elif visualization == "Box Plots":
-                st.write("#### Box Plots of Features")
-                for feature in features:
-                    fig = px.box(data, y=feature, title=f"Box Plot of {feature}")
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            elif visualization == "Frequency Histograms":
-                st.write("#### Frequency Histograms of Features")
-                for feature in features:
-                    fig = px.histogram(data, x=feature, nbins=30, title=f"Frequency Histogram of {feature}")
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            elif visualization == "Prediction Error Histogram":
-                if target in data.columns:
-                    data['Error'] = data[target] - data['Predicted_WaitingTime']
-                    fig = px.histogram(data, x='Error', nbins=50, title="Model Prediction Error Distribution")
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.error(f"Cannot create Prediction Error Histogram because '{target}' column is missing.")
-
-        except Exception as e:
-            st.error(f"Error processing file: {str(e)}")
-    else:
-        st.info("Please upload a CSV or XLSX file to generate visualizations.")
-
-def hospital_locator_page():
-    st.header("Hospital Locator")
-    col1, col2 = st.columns([1, 2])
-
-    with col1:
-        st.subheader("Input City")
-        city_name = st.text_input("Enter a City Name to View Nearby Hospitals")
-        
-        if city_name:
-            with st.spinner("Fetching city coordinates..."):
-                city_coords = get_city_coordinates(city_name)
+                    data = pd.read_excel(uploaded_file)
                 
-            if city_coords and is_valid_coordinates(*city_coords):
-                with st.spinner("Searching for nearby hospitals..."):
-                    hospitals = get_hospitals_near_city(*city_coords)
-                    
-                if hospitals:
-                    st.success(f"Found {len(hospitals)} hospitals near {city_name}")
-                    
-                    with st.spinner("Creating map..."):
-                        city_map = display_hospital_map(hospitals, city_coords)
-                        
-                    if city_map is not None:
-                        st_folium(city_map, width=800, height=500)
-                        
-                        with st.expander("View Hospital List"):
-                            for idx, hospital in enumerate(hospitals, 1):
-                                st.write(f"{idx}. {hospital['name']}")
-                    else:
-                        st.error("Failed to create map. Please try again.")
+                st.write("### Uploaded Data Preview")
+                st.write(data.head())
+
+                # Check if required features are present
+                if not set(features).issubset(data.columns):
+                    st.error("Uploaded data does not contain all the required features.")
+                    st.stop()
+
+                # Check if target column exists for visualizations
+                has_target = target in data.columns
+
+                X_new_scaled = preprocess_data(data, features, scaler)
+                predictions = make_predictions(model, X_new_scaled)
+                data['Predicted_WaitingTime'] = predictions
+
+                st.write("### Predictions")
+                st.write(data[['Predicted_WaitingTime']])
+
+                if has_target:
+                    visualize_batch_data(data, predictions, target)
                 else:
-                    st.warning("""No hospitals found in the area. Try increasing the search radius or using a more specific address.""")
-            else:
-                st.error("Could not find the specified location. Please check the spelling or try a more specific location.")
+                    st.warning("The 'waitingTime' column is missing from the uploaded data. Visualizations requiring actual values will not be displayed.")
+
+            except Exception as e:
+                st.error(f"Error processing file: {str(e)}")
+        else:
+            st.info("Please upload a CSV or XLSX file to proceed.")
+
+    elif page == "Hospital Locator":
+        st.header("Hospital Locator")
+        col1, col2 = st.columns([1, 2])
+
+        with col1:
+            st.subheader("Input City")
+            city_name = st.text_input("Enter a City Name to View Nearby Hospitals")
+            
+            if city_name:
+                with st.spinner("Fetching city coordinates..."):
+                    city_coords = get_city_coordinates(city_name)
+                    
+                if city_coords and is_valid_coordinates(*city_coords):
+                    with st.spinner("Searching for nearby hospitals..."):
+                        hospitals = get_hospitals_near_city(*city_coords)
+                        
+                    if hospitals:
+                        st.success(f"Found {len(hospitals)} hospitals near {city_name}")
+                        
+                        with st.spinner("Creating map..."):
+                            city_map = display_hospital_map(hospitals, city_coords)
+                            
+                        if city_map is not None:
+                            st_folium(city_map, width=800, height=500)
+                            
+                            with st.expander("View Hospital List"):
+                                for idx, hospital in enumerate(hospitals, 1):
+                                    st.write(f"{idx}. {hospital['name']}")
+                        else:
+                            st.error("Failed to create map. Please try again.")
+                    else:
+                        st.warning("""No hospitals found in the area. Try increasing the search radius or using a more specific address.""")
+                else:
+                    st.error("Could not find the specified location. Please check the spelling or try a more specific location.")
 
 if __name__ == "__main__":
     main()
