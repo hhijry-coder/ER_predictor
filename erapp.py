@@ -222,7 +222,7 @@ def display_hospital_map(hospitals, city_coords):
         ).add_to(m)
         
         return m
-        
+            
     except Exception as e:
         st.error(f"Error creating map: {str(e)}")
         return None
@@ -317,7 +317,12 @@ def predict_page(features, model, scaler):
             if st.button("Predict Waiting Time"):
                 X_new_scaled = preprocess_data(user_data, features, scaler)
                 predictions = make_predictions(model, X_new_scaled)
-                display_fancy_prediction(predictions[0])
+                predicted_time = predictions[0]
+                display_fancy_prediction(predicted_time)
+
+                # Display Visualizations for Manual Input
+                with st.expander("View Visualizations"):
+                    visualize_manual_input(user_data, predicted_time)
 
         else:
             uploaded_file = st.file_uploader("Upload your CSV or XLSX file", type=["csv", "xlsx"])
@@ -332,16 +337,91 @@ def predict_page(features, model, scaler):
                     st.write("### Uploaded Data Preview")
                     st.write(data.head())
 
+                    # Ensure required features are present
+                    if not set(features).issubset(data.columns):
+                        st.error("Uploaded data does not contain all the required features.")
+                        return
+
                     X_new_scaled = preprocess_data(data, features, scaler)
                     predictions = make_predictions(model, X_new_scaled)
                     data['Predicted_WaitingTime'] = predictions
                     
                     st.write("### Predictions")
                     st.write(data[['Predicted_WaitingTime']])
-                    display_fancy_prediction(predictions[0])
+
+                    # Display Visualizations for Batch Data
+                    with st.expander("View Visualizations"):
+                        visualize_batch_data(data, predictions)
 
                 except Exception as e:
                     st.error(f"Error processing file: {str(e)}")
+
+    with col2:
+        st.header("Visualizations")
+        # This column is reserved for displaying visualizations from manual input or batch upload
+        st.info("Visualizations will appear here after making predictions.")
+
+def visualize_manual_input(user_data, predicted_time):
+    # Since it's a single data point, visualizations will be limited
+    st.write("### Visualization for Manual Input")
+
+    # Display a horizontal bar chart for the input features
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=user_data.iloc[0],
+        y=user_data.columns,
+        orientation='h',
+        marker=dict(color='rgba(50, 171, 96, 0.6)',
+                    line=dict(color='rgba(50, 171, 96, 1.0)', width=1))
+    ))
+    fig.update_layout(title="Input Features", xaxis_title="Value", yaxis_title="Feature")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Display the predicted waiting time against the input features
+    fig2 = px.scatter(
+        x=user_data.iloc[0],
+        y=['Predicted Waiting Time'] * len(user_data.columns),
+        size=[20] * len(user_data.columns),
+        color=['red'] * len(user_data.columns),
+        labels={"x": "Feature Value", "y": "Metric"},
+        title="Predicted Waiting Time Relative to Input Features"
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
+def visualize_batch_data(data, predictions):
+    st.write("### Visualizations for Batch Data")
+
+    # Actual vs Predicted Scatter Plot
+    if 'waitingTime' in data.columns:
+        fig1 = px.scatter(
+            data, x='waitingTime', y='Predicted_WaitingTime',
+            trendline="ols",
+            title="Actual vs Predicted Waiting Time",
+            labels={"waitingTime": "Actual Waiting Time", "Predicted_WaitingTime": "Predicted Waiting Time"}
+        )
+        st.plotly_chart(fig1, use_container_width=True)
+    else:
+        st.warning("The uploaded data does not contain the 'waitingTime' column required for Actual vs Predicted visualization.")
+
+    # Box Plots for Each Feature
+    st.write("#### Box Plots of Features")
+    for feature in ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']:
+        fig = px.box(data, y=feature, title=f"Box Plot of {feature}")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # Frequency Histograms for Each Feature
+    st.write("#### Frequency Histograms of Features")
+    for feature in ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']:
+        fig = px.histogram(data, x=feature, nbins=30, title=f"Frequency Histogram of {feature}")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # Prediction Error Histogram
+    if 'waitingTime' in data.columns:
+        data['Error'] = data['waitingTime'] - data['Predicted_WaitingTime']
+        fig = px.histogram(data, x='Error', nbins=50, title="Model Prediction Error Distribution")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Cannot display Prediction Error Histogram as 'waitingTime' column is missing.")
 
 def visualizations_page(features, model, scaler, target):
     st.header("Data Visualizations")
@@ -366,42 +446,51 @@ def visualizations_page(features, model, scaler, target):
             st.write("### Uploaded Data Preview")
             st.write(data.head())
 
-            # Check if target column exists
-            if target not in data.columns:
-                st.error(f"Uploaded data must contain the '{target}' column for Actual values.")
+            # Check if required features are present
+            if not set(features).issubset(data.columns):
+                st.error("Uploaded data does not contain all the required features.")
+                return
+
+            # Check if target column exists for Actual vs Predicted and Prediction Error
+            if visualization in ["Actual vs Predicted", "Prediction Error Histogram"] and target not in data.columns:
+                st.error(f"Uploaded data must contain the '{target}' column for this visualization.")
                 return
 
             X_new_scaled = preprocess_data(data, features, scaler)
             predictions = make_predictions(model, X_new_scaled)
             data['Predicted_WaitingTime'] = predictions
-            data['Error'] = data[target] - data['Predicted_WaitingTime']
 
             if visualization == "Actual vs Predicted":
-                fig = px.scatter(
-                    data, x=target, y='Predicted_WaitingTime',
-                    trendline="ols",
-                    title="Actual vs Predicted Waiting Time",
-                    labels={target: "Actual Waiting Time", 'Predicted_WaitingTime': "Predicted Waiting Time"}
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
+                if target in data.columns:
+                    fig = px.scatter(
+                        data, x=target, y='Predicted_WaitingTime',
+                        trendline="ols",
+                        title="Actual vs Predicted Waiting Time",
+                        labels={target: "Actual Waiting Time", 'Predicted_WaitingTime': "Predicted Waiting Time"}
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.error(f"Cannot create Actual vs Predicted plot because '{target}' column is missing.")
+            
             elif visualization == "Box Plots":
-                fig = go.Figure()
-                for column in features:
-                    fig.add_trace(go.Box(y=data[column], name=column))
-                fig.update_layout(title="Box Plots of Variables", yaxis_title="Values")
-                st.plotly_chart(fig, use_container_width=True)
-
+                st.write("#### Box Plots of Features")
+                for feature in features:
+                    fig = px.box(data, y=feature, title=f"Box Plot of {feature}")
+                    st.plotly_chart(fig, use_container_width=True)
+            
             elif visualization == "Frequency Histograms":
-                fig = go.Figure()
-                for column in features:
-                    fig.add_trace(go.Histogram(x=data[column], name=column, opacity=0.75))
-                fig.update_layout(title="Frequency Histograms of Variables", barmode='overlay')
-                st.plotly_chart(fig, use_container_width=True)
-
+                st.write("#### Frequency Histograms of Features")
+                for feature in features:
+                    fig = px.histogram(data, x=feature, nbins=30, title=f"Frequency Histogram of {feature}")
+                    st.plotly_chart(fig, use_container_width=True)
+            
             elif visualization == "Prediction Error Histogram":
-                fig = px.histogram(data, x='Error', nbins=50, title="Model Prediction Error Distribution")
-                st.plotly_chart(fig, use_container_width=True)
+                if target in data.columns:
+                    data['Error'] = data[target] - data['Predicted_WaitingTime']
+                    fig = px.histogram(data, x='Error', nbins=50, title="Model Prediction Error Distribution")
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.error(f"Cannot create Prediction Error Histogram because '{target}' column is missing.")
 
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
