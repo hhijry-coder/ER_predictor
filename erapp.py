@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 import pickle
 from tensorflow.keras.models import load_model
-import matplotlib.pyplot as plt
-import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
 import folium
@@ -46,11 +46,6 @@ st.markdown("""
     }
     </style>
     """, unsafe_allow_html=True)
-
-# Set style for seaborn plots
-sns.set_style("whitegrid")
-plt.style.use("seaborn-v0_8-darkgrid")
-
 
 # Cache successful geocoding results
 @lru_cache(maxsize=100)
@@ -213,7 +208,7 @@ def display_hospital_map(hospitals, city_coords):
         marker_cluster = MarkerCluster().add_to(m)
         
         for hospital in hospitals:
-            if is_valid_coordinates(hospital['lat'], hospital['lon']):  # Fixed closing parenthesis here
+            if is_valid_coordinates(hospital['lat'], hospital['lon']):
                 folium.Marker(
                     location=[hospital['lat'], hospital['lon']],
                     popup=hospital['name'],
@@ -231,7 +226,6 @@ def display_hospital_map(hospitals, city_coords):
     except Exception as e:
         st.error(f"Error creating map: {str(e)}")
         return None
-
 
 @st.cache_resource
 def load_model_and_scaler():
@@ -264,7 +258,7 @@ def display_fancy_prediction(predicted_time):
     )
 
 def main():
-    st.title("🏥 HajjCare Flow Optimize")
+    st.title("🏥 HajjCare Flow Optimizer")
     st.write("Predict hospital waiting times and explore nearby hospitals")
 
     model, scaler = load_model_and_scaler()
@@ -276,25 +270,37 @@ def main():
     features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
     target = 'waitingTime'
 
+    # Sidebar for navigation
+    st.sidebar.header("Navigation")
+    page = st.sidebar.radio("Go to", ["Predictor", "Visualizations", "Hospital Locator"])
+
+    if page == "Predictor":
+        predict_page(features, model, scaler)
+    elif page == "Visualizations":
+        visualizations_page(features, model, scaler, target)
+    elif page == "Hospital Locator":
+        hospital_locator_page()
+
+def predict_page(features, model, scaler):
     col1, col2 = st.columns([1, 2])
 
     with col1:
-        st.sidebar.header("Input Options")
-        data_source = st.sidebar.radio("Choose the data source", ("Manual Input", "Upload CSV/XLSX File"))
+        st.header("Input Options")
+        data_source = st.radio("Choose the data source", ("Manual Input", "Upload CSV/XLSX File"))
 
         if data_source == "Manual Input":
-            st.sidebar.subheader("Input values manually")
+            st.subheader("Input values manually")
             # Renaming Total Time to X3 for consistency with model
-            total_time = st.sidebar.number_input("Total Time (Waiting time + Service Time)", min_value=0.0, value=10.0)
-            hour = st.sidebar.slider("Hour", 0, 23, 12)
-            minutes = st.sidebar.slider("Minutes", 0, 59, 30)
-            waitingPeople = st.sidebar.number_input("Waiting People", min_value=0, value=5)
-            dayOfWeek = st.sidebar.selectbox(
+            total_time = st.number_input("Total Time (Waiting time + Service Time)", min_value=0.0, value=10.0)
+            hour = st.slider("Hour", 0, 23, 12)
+            minutes = st.slider("Minutes", 0, 59, 30)
+            waitingPeople = st.number_input("Waiting People", min_value=0, value=5)
+            dayOfWeek = st.selectbox(
                 "Day of the Week", 
                 options=[0, 1, 2, 3, 4, 5, 6],
                 format_func=lambda x: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][x]
             )
-            serviceTime = st.sidebar.number_input("Service Time", min_value=0.0, value=20.0)
+            serviceTime = st.number_input("Service Time", min_value=0.0, value=20.0)
 
             user_data = pd.DataFrame({
                 'X3': [total_time],  # Renaming 'Total Time' to 'X3'
@@ -314,7 +320,7 @@ def main():
                 display_fancy_prediction(predictions[0])
 
         else:
-            uploaded_file = st.sidebar.file_uploader("Upload your CSV or XLSX file", type=["csv", "xlsx"])
+            uploaded_file = st.file_uploader("Upload your CSV or XLSX file", type=["csv", "xlsx"])
 
             if uploaded_file is not None:
                 try:
@@ -337,8 +343,77 @@ def main():
                 except Exception as e:
                     st.error(f"Error processing file: {str(e)}")
 
-    with col2:
-        st.subheader("Hospital Map")
+def visualizations_page(features, model, scaler, target):
+    st.header("Data Visualizations")
+    
+    # Select Visualization
+    visualization = st.selectbox(
+        "Select a Visualization",
+        ("Actual vs Predicted", "Box Plots", "Frequency Histograms", "Prediction Error Histogram")
+    )
+    
+    # Upload Data
+    st.subheader("Upload Data for Visualization")
+    uploaded_file = st.file_uploader("Upload your CSV or XLSX file", type=["csv", "xlsx"])
+
+    if uploaded_file is not None:
+        try:
+            if uploaded_file.name.endswith(".csv"):
+                data = pd.read_csv(uploaded_file)
+            else:
+                data = pd.read_excel(uploaded_file)
+            
+            st.write("### Uploaded Data Preview")
+            st.write(data.head())
+
+            # Check if target column exists
+            if target not in data.columns:
+                st.error(f"Uploaded data must contain the '{target}' column for Actual values.")
+                return
+
+            X_new_scaled = preprocess_data(data, features, scaler)
+            predictions = make_predictions(model, X_new_scaled)
+            data['Predicted_WaitingTime'] = predictions
+            data['Error'] = data[target] - data['Predicted_WaitingTime']
+
+            if visualization == "Actual vs Predicted":
+                fig = px.scatter(
+                    data, x=target, y='Predicted_WaitingTime',
+                    trendline="ols",
+                    title="Actual vs Predicted Waiting Time",
+                    labels={target: "Actual Waiting Time", 'Predicted_WaitingTime': "Predicted Waiting Time"}
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            elif visualization == "Box Plots":
+                fig = go.Figure()
+                for column in features:
+                    fig.add_trace(go.Box(y=data[column], name=column))
+                fig.update_layout(title="Box Plots of Variables", yaxis_title="Values")
+                st.plotly_chart(fig, use_container_width=True)
+
+            elif visualization == "Frequency Histograms":
+                fig = go.Figure()
+                for column in features:
+                    fig.add_trace(go.Histogram(x=data[column], name=column, opacity=0.75))
+                fig.update_layout(title="Frequency Histograms of Variables", barmode='overlay')
+                st.plotly_chart(fig, use_container_width=True)
+
+            elif visualization == "Prediction Error Histogram":
+                fig = px.histogram(data, x='Error', nbins=50, title="Model Prediction Error Distribution")
+                st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"Error processing file: {str(e)}")
+    else:
+        st.info("Please upload a CSV or XLSX file to generate visualizations.")
+
+def hospital_locator_page():
+    st.header("Hospital Locator")
+    col1, col2 = st.columns([1, 2])
+
+    with col1:
+        st.subheader("Input City")
         city_name = st.text_input("Enter a City Name to View Nearby Hospitals")
         
         if city_name:
