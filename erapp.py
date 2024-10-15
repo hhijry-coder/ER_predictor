@@ -410,10 +410,6 @@ def main():
 
                 X_new_scaled = preprocess_data(data, features, scaler)
                 predictions = make_predictions(model, X_new_scaled)
-                data['Predicted_WaitingTime'] = predictions
-
-                st.write("### Predictions")
-                st.write(data[['Predicted_WaitingTime']])
 
                 visualize_batch_data(data, predictions, target)
 
