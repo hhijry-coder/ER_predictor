@@ -1,4 +1,4 @@
-import streamlit as st
+import os
 import pandas as pd
 import numpy as np
 import pickle
@@ -13,6 +13,10 @@ import requests
 from folium.plugins import MarkerCluster
 from functools import lru_cache
 import time
+import streamlit as st
+
+# Disable GPU usage to avoid CUDA errors
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 # Set page config
 st.set_page_config(
@@ -50,7 +54,6 @@ st.markdown("""
 # Set style for seaborn plots
 sns.set_style("whitegrid")
 plt.style.use("seaborn-v0_8-darkgrid")
-
 
 # Cache successful geocoding results
 @lru_cache(maxsize=100)
@@ -184,11 +187,6 @@ def get_hospitals_near_city(lat, lon, radius=5000):
     st.error(f"""
         Unable to fetch hospital data. Please try again later.
         Error: {last_error}
-        
-        Alternative options:
-        1. Try a different city
-        2. Refresh the page
-        3. Check your internet connection
     """)
     return []
 
@@ -213,7 +211,7 @@ def display_hospital_map(hospitals, city_coords):
         marker_cluster = MarkerCluster().add_to(m)
         
         for hospital in hospitals:
-            if is_valid_coordinates(hospital['lat'], hospital['lon']):  # Fixed closing parenthesis here
+            if is_valid_coordinates(hospital['lat'], hospital['lon']):
                 folium.Marker(
                     location=[hospital['lat'], hospital['lon']],
                     popup=hospital['name'],
@@ -232,11 +230,10 @@ def display_hospital_map(hospitals, city_coords):
         st.error(f"Error creating map: {str(e)}")
         return None
 
-
 @st.cache_resource
 def load_model_and_scaler():
     try:
-        model = load_model('best_model.keras')
+        model = load_model('best_model.keras', compile=False)  # Disable optimizer warnings
         with open('scaler_model.pkl', 'rb') as scaler_file:
             scaler = pickle.load(scaler_file)
         return model, scaler
@@ -251,7 +248,11 @@ def preprocess_data(data, features, scaler):
     return X_new_scaled
 
 def make_predictions(model, X_new_scaled):
-    return model.predict(X_new_scaled).flatten()
+    try:
+        return model.predict(X_new_scaled).flatten()
+    except Exception as e:
+        st.error(f"Error making predictions: {str(e)}")
+        return None
 
 def display_fancy_prediction(predicted_time):
     st.markdown(
@@ -264,7 +265,7 @@ def display_fancy_prediction(predicted_time):
     )
 
 def main():
-    st.title("🏥 HajjCare Flow Optimize")
+    st.title("🏥 HajjCare Flow Optimizer")
     st.write("Predict hospital waiting times and explore nearby hospitals")
 
     model, scaler = load_model_and_scaler()
@@ -272,9 +273,8 @@ def main():
         st.error("Failed to load model and scaler. Please check the files.")
         return
 
-    # Features list: Rename 'Total Time' back to 'X3'
+    # Features list
     features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
-    target = 'waitingTime'
 
     col1, col2 = st.columns([1, 2])
 
@@ -284,7 +284,6 @@ def main():
 
         if data_source == "Manual Input":
             st.sidebar.subheader("Input values manually")
-            # Renaming Total Time to X3 for consistency with model
             total_time = st.sidebar.number_input("Total Time (Waiting time + Service Time)", min_value=0.0, value=10.0)
             hour = st.sidebar.slider("Hour", 0, 23, 12)
             minutes = st.sidebar.slider("Minutes", 0, 59, 30)
@@ -297,7 +296,7 @@ def main():
             serviceTime = st.sidebar.number_input("Service Time", min_value=0.0, value=20.0)
 
             user_data = pd.DataFrame({
-                'X3': [total_time],  # Renaming 'Total Time' to 'X3'
+                'X3': [total_time],
                 'hour': [hour],
                 'minutes': [minutes],
                 'waitingPeople': [waitingPeople],
@@ -311,7 +310,8 @@ def main():
             if st.button("Predict Waiting Time"):
                 X_new_scaled = preprocess_data(user_data, features, scaler)
                 predictions = make_predictions(model, X_new_scaled)
-                display_fancy_prediction(predictions[0])
+                if predictions is not None:
+                    display_fancy_prediction(predictions[0])
 
         else:
             uploaded_file = st.sidebar.file_uploader("Upload your CSV or XLSX file", type=["csv", "xlsx"])
@@ -326,13 +326,16 @@ def main():
                     st.write("### Uploaded Data Preview")
                     st.write(data.head())
 
-                    X_new_scaled = preprocess_data(data, features, scaler)
-                    predictions = make_predictions(model, X_new_scaled)
-                    data['Predicted_WaitingTime'] = predictions
-                    
-                    st.write("### Predictions")
-                    st.write(data[['Predicted_WaitingTime']])
-                    display_fancy_prediction(predictions[0])
+                    if all(col in data.columns for col in features):
+                        X_new_scaled = preprocess_data(data, features, scaler)
+                        predictions = make_predictions(model, X_new_scaled)
+                        if predictions is not None:
+                            data['Predicted_WaitingTime'] = predictions
+                            st.write("### Predictions")
+                            st.write(data[['Predicted_WaitingTime']])
+                            display_fancy_prediction(predictions[0])
+                    else:
+                        st.error("Uploaded data does not contain required features.")
 
                 except Exception as e:
                     st.error(f"Error processing file: {str(e)}")
@@ -364,7 +367,7 @@ def main():
                     else:
                         st.error("Failed to create map. Please try again.")
                 else:
-                    st.warning("""No hospitals found in the area. Try increasing the search radius or using a more specific address.""")
+                    st.warning("No hospitals found in the area. Try increasing the search radius or using a more specific address.")
             else:
                 st.error("Could not find the specified location. Please check the spelling or try a more specific location.")
 
