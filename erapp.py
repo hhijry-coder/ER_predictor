@@ -260,83 +260,88 @@ def display_fancy_prediction(predicted_time):
 
 def visualize_manual_input(user_data, predicted_time):
     st.subheader("Visualizations")
-    fig = make_subplots(rows=2, cols=2,
-                        subplot_titles=("Feature Distributions", "Predicted Waiting Time"))
-
-    # Box Plots for each feature
-    for idx, feature in enumerate(user_data.columns, 1):
+    
+    # Create subplots for individual feature visualizations
+    fig = make_subplots(rows=2, cols=3, subplot_titles=list(user_data.columns))
+    
+    for idx, feature in enumerate(user_data.columns):
+        row = idx // 3 + 1
+        col = idx % 3 + 1
+        
+        # Bar plot for each feature
         fig.add_trace(
-            go.Box(y=user_data[feature], name=feature),
-            row=1, col=1
+            go.Bar(x=[feature], y=[user_data[feature].values[0]], name=feature),
+            row=row, col=col
         )
-
-    # Since manual input has only one data point, histograms will not be meaningful.
-    # Instead, we can display the predicted waiting time in a bar chart.
-    fig.add_trace(
-        go.Bar(x=['Predicted Waiting Time'], y=[predicted_time], marker_color='indianred'),
-        row=2, col=1
-    )
-
-    fig.update_layout(height=800, showlegend=False,
-                      title_text="Manual Input Visualizations",
-                      template="plotly_white")
+        
+        # Update y-axis range for better visibility
+        fig.update_yaxes(range=[0, max(user_data[feature].values[0] * 1.2, 1)], row=row, col=col)
+    
+    fig.update_layout(height=600, showlegend=False, title_text="Input Feature Values")
     st.plotly_chart(fig, use_container_width=True)
+    
+    # Predicted Waiting Time visualization
+    fig_pred = go.Figure(data=[
+        go.Indicator(
+            mode="gauge+number",
+            value=predicted_time,
+            title={'text': "Predicted Waiting Time (minutes)"},
+            gauge={'axis': {'range': [0, max(100, predicted_time * 1.2)]}}
+        )
+    ])
+    fig_pred.update_layout(height=400)
+    st.plotly_chart(fig_pred, use_container_width=True)
 
 def visualize_batch_data(data, predictions, target):
     st.subheader("Visualizations")
+    
     # Calculate prediction errors
     data['Predicted_WaitingTime'] = predictions
     if target in data.columns:
         data['Error'] = data[target] - data['Predicted_WaitingTime']
     
-    # Create subplots
-    fig = make_subplots(rows=2, cols=2,
-                        subplot_titles=("Actual vs Predicted", "Feature Box Plots", "Frequency Histograms", "Prediction Error Histogram"))
-
     # Actual vs Predicted Scatter Plot with Best Fit Line
     if target in data.columns:
-        fig.add_trace(
-            go.Scatter(x=data[target], y=data['Predicted_WaitingTime'],
-                       mode='markers', name='Predicted vs Actual'),
-            row=1, col=1
+        fig_scatter = px.scatter(data, x=target, y='Predicted_WaitingTime', trendline="ols")
+        fig_scatter.update_layout(title="Actual vs Predicted Waiting Time", 
+                                  xaxis_title="Actual Waiting Time",
+                                  yaxis_title="Predicted Waiting Time")
+        st.plotly_chart(fig_scatter, use_container_width=True)
+    
+    # Individual feature distributions
+    features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
+    fig_dist = make_subplots(rows=2, cols=3, subplot_titles=features)
+    
+    for idx, feature in enumerate(features):
+        row = idx // 3 + 1
+        col = idx % 3 + 1
+        fig_dist.add_trace(
+            go.Histogram(x=data[feature], name=feature),
+            row=row, col=col
         )
-        # Add best fit line
-        if len(data[target]) > 1:
-            fit = np.polyfit(data[target], data['Predicted_WaitingTime'], 1)
-            fit_fn = np.poly1d(fit)
-            fig.add_trace(
-                go.Scatter(x=data[target], y=fit_fn(data[target]),
-                           mode='lines', name='Best Fit Line'),
-                row=1, col=1
-            )
-
-    # Box Plots for each feature
-    for feature in ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']:
-        fig.add_trace(
+    
+    fig_dist.update_layout(height=800, showlegend=False, title_text="Feature Distributions")
+    st.plotly_chart(fig_dist, use_container_width=True)
+    
+    # Individual feature box plots
+    fig_box = make_subplots(rows=2, cols=3, subplot_titles=features)
+    
+    for idx, feature in enumerate(features):
+        row = idx // 3 + 1
+        col = idx % 3 + 1
+        fig_box.add_trace(
             go.Box(y=data[feature], name=feature),
-            row=1, col=2
+            row=row, col=col
         )
-
-    # Frequency Histograms for each feature
-    for feature in ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']:
-        fig.add_trace(
-            go.Histogram(x=data[feature], name=feature, opacity=0.75),
-            row=2, col=1
-        )
-
+    
+    fig_box.update_layout(height=800, showlegend=False, title_text="Feature Box Plots")
+    st.plotly_chart(fig_box, use_container_width=True)
+    
     # Prediction Error Histogram
     if target in data.columns:
-        fig.add_trace(
-            go.Histogram(x=data['Error'], nbinsx=50, name='Error'),
-            row=2, col=2
-        )
-
-    fig.update_layout(height=1000, showlegend=False,
-                      title_text="Batch Data Visualizations",
-                      template="plotly_white")
-    fig.update_xaxes(title_text=target if target in data.columns else "", row=1, col=1)
-    fig.update_yaxes(title_text="Waiting Time (minutes)", row=1, col=1)
-    st.plotly_chart(fig, use_container_width=True)
+        fig_error = px.histogram(data, x='Error', nbins=50)
+        fig_error.update_layout(title="Prediction Error Distribution")
+        st.plotly_chart(fig_error, use_container_width=True)
 
 def main():
     # Load model and scaler
@@ -355,15 +360,19 @@ def main():
 
     if page == "Manual Input Visualization":
         st.header("Manual Input Visualization")
-        col1, col2 = st.columns([1, 2])
+        
+        # Use columns to create a more efficient layout
+        col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.subheader("Input values manually")
-            # Renaming Total Time to X3 for consistency with model
             total_time = st.number_input("Total Time (Waiting time + Service Time)", min_value=0.0, value=10.0)
             hour = st.slider("Hour", 0, 23, 12)
+        
+        with col2:
             minutes = st.slider("Minutes", 0, 59, 30)
             waiting_people = st.number_input("Waiting People", min_value=0, value=5)
+        
+        with col3:
             day_of_week = st.selectbox(
                 "Day of the Week", 
                 options=[0, 1, 2, 3, 4, 5, 6],
@@ -371,22 +380,22 @@ def main():
             )
             service_time = st.number_input("Service Time", min_value=0.0, value=20.0)
 
-            if st.button("Predict Waiting Time"):
-                user_data = pd.DataFrame({
-                    'X3': [total_time],
-                    'hour': [hour],
-                    'minutes': [minutes],
-                    'waitingPeople': [waiting_people],
-                    'dayOfWeek': [day_of_week],
-                    'serviceTime': [service_time]
-                })
+        if st.button("Predict Waiting Time"):
+            user_data = pd.DataFrame({
+                'X3': [total_time],
+                'hour': [hour],
+                'minutes': [minutes],
+                'waitingPeople': [waiting_people],
+                'dayOfWeek': [day_of_week],
+                'serviceTime': [service_time]
+            })
 
-                X_new_scaled = preprocess_data(user_data, features, scaler)
-                predictions = make_predictions(model, X_new_scaled)
-                display_fancy_prediction(predictions[0])
+            X_new_scaled = preprocess_data(user_data, features, scaler)
+            predictions = make_predictions(model, X_new_scaled)
+            display_fancy_prediction(predictions[0])
 
-                # Visualize manual input
-                visualize_manual_input(user_data, predictions[0])
+            # Visualize manual input
+            visualize_manual_input(user_data, predictions[0])
 
     elif page == "Batch Data Visualization":
         st.header("Batch Data Visualization")
@@ -417,15 +426,13 @@ def main():
                 st.write("### Predictions")
                 st.write(data[['Predicted_WaitingTime']])
 
-                if has_target:
-                    visualize_batch_data(data, predictions, target)
-                else:
-                    st.warning("The 'waitingTime' column is missing from the uploaded data. Visualizations requiring actual values will not be displayed.")
+                visualize_batch_data(data, predictions, target)
 
             except Exception as e:
                 st.error(f"Error processing file: {str(e)}")
         else:
             st.info("Please upload a CSV or XLSX file to proceed.")
+            
 
     elif page == "Hospital Locator":
         st.header("Hospital Locator")
