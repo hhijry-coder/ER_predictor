@@ -474,19 +474,6 @@ def visualize_manual_input(user_data, predicted_time):
         fig_features.update_layout(title="Input Feature Values", yaxis_title="Value", xaxis_title="Features")
         st.plotly_chart(fig_features, use_container_width=True)
     
-    with col2:
-        st.write("### Predicted Waiting Time")
-        fig_pred = go.Figure(data=[
-            go.Indicator(
-                mode="gauge+number",
-                value=predicted_time,
-                title={'text': "Predicted Waiting Time (minutes)"}
-            )
-        ])
-        fig_pred.update_layout(height=300)
-        st.plotly_chart(fig_pred, use_container_width=True)
-    
-    # Additional visualizations can be added here if needed
 
 def visualize_batch_data(data, predictions, target):
     st.subheader("Visualizations")
