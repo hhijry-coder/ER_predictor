@@ -48,7 +48,106 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Cache successful geocoding results
+@st.cache_resource
+def load_model_and_scaler():
+    try:
+        model = load_model('best_model.keras')
+        with open('scaler_model.pkl', 'rb') as scaler_file:
+            scaler = pickle.load(scaler_file)
+        return model, scaler
+    except Exception as e:
+        st.error(f"Error loading model and scaler: {str(e)}")
+        return None, None
+
+def preprocess_data(data, features, scaler):
+    X_new = data[features]
+    X_new_scaled = scaler.transform(X_new)
+    X_new_scaled = X_new_scaled.reshape((X_new_scaled.shape[0], 1, X_new_scaled.shape[1]))
+    return X_new_scaled
+
+def make_predictions(model, X_new_scaled):
+    return model.predict(X_new_scaled).flatten()
+
+def display_fancy_prediction(predicted_time):
+    st.markdown(
+        f"""
+        <div style="background-color:#4CAF50;padding:20px;border-radius:10px">
+        <h2 style="color:white;text-align:center;">Predicted Waiting Time: {predicted_time:.2f} minutes</h2>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+def visualize_manual_input(user_data, predicted_time):
+    st.subheader("Visualizations")
+    
+    # Create subplots for individual feature visualizations
+    fig = make_subplots(rows=2, cols=3, subplot_titles=list(user_data.columns))
+    
+    for idx, feature in enumerate(user_data.columns):
+        row = idx // 3 + 1
+        col = idx % 3 + 1
+        
+        # Bar plot for each feature
+        fig.add_trace(
+            go.Bar(x=[feature], y=[user_data[feature].values[0]], name=feature),
+            row=row, col=col
+        )
+        
+        # Update y-axis range for better visibility
+        fig.update_yaxes(range=[0, max(user_data[feature].values[0] * 1.2, 1)], row=row, col=col)
+    
+    fig.update_layout(height=600, showlegend=False, title_text="Input Feature Values")
+    st.plotly_chart(fig, use_container_width=True)
+
+def visualize_batch_data(data, predictions, target):
+    st.subheader("Visualizations")
+    
+    # Calculate prediction errors
+    data['Predicted_WaitingTime'] = predictions
+    if target in data.columns:
+        data['Error'] = data[target] - data['Predicted_WaitingTime']
+    
+    # Create subplots
+    fig = make_subplots(rows=2, cols=2,
+                        subplot_titles=("Actual vs Predicted", "Feature Box Plots", 
+                                        "Feature Distributions", "Prediction Error Distribution"))
+
+    # Actual vs Predicted Scatter Plot with Best Fit Line
+    if target in data.columns:
+        fig.add_trace(
+            go.Scatter(x=data[target], y=data['Predicted_WaitingTime'],
+                       mode='markers', name='Predicted vs Actual'),
+            row=1, col=1
+        )
+        # Add best fit line
+        if len(data[target]) > 1:
+            fit = np.polyfit(data[target], data['Predicted_WaitingTime'], 1)
+            fit_fn = np.poly1d(fit)
+            fig.add_trace(
+                go.Scatter(x=data[target], y=fit_fn(data[target]),
+                           mode='lines', name='Best Fit Line'),
+                row=1, col=1
+            )
+
+    # Box Plots and Histograms for each feature
+    features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
+    for feature in features:
+        fig.add_trace(go.Box(y=data[feature], name=feature), row=1, col=2)
+        fig.add_trace(go.Histogram(x=data[feature], name=feature), row=2, col=1)
+
+    # Prediction Error Histogram
+    if target in data.columns:
+        fig.add_trace(go.Histogram(x=data['Error'], nbinsx=50, name='Error'), row=2, col=2)
+
+    fig.update_layout(height=1000, showlegend=False,
+                      title_text="Batch Data Visualizations",
+                      template="plotly_white")
+    fig.update_xaxes(title_text=target if target in data.columns else "", row=1, col=1)
+    fig.update_yaxes(title_text="Waiting Time (minutes)", row=1, col=1)
+    st.plotly_chart(fig, use_container_width=True)
+
+# Hospital Locator functions (unchanged)
 @lru_cache(maxsize=100)
 def _cached_geocoding(city_name):
     geolocator = Nominatim(user_agent="hospital_wait_time_predictor_1.0")
@@ -57,7 +156,6 @@ def _cached_geocoding(city_name):
         return location.latitude, location.longitude
     return None
 
-# Rate limiting decorator
 def rate_limit(seconds):
     last_time = [0]
     def decorator(func):
@@ -228,110 +326,6 @@ def display_hospital_map(hospitals, city_coords):
         st.error(f"Error creating map: {str(e)}")
         return None
 
-@st.cache_resource
-def load_model_and_scaler():
-    try:
-        model = load_model('best_model.keras')
-        with open('scaler_model.pkl', 'rb') as scaler_file:
-            scaler = pickle.load(scaler_file)
-        return model, scaler
-    except Exception as e:
-        st.error(f"Error loading model and scaler: {str(e)}")
-        return None, None
-
-def preprocess_data(data, features, scaler):
-    X_new = data[features]
-    X_new_scaled = scaler.transform(X_new)
-    X_new_scaled = X_new_scaled.reshape((X_new_scaled.shape[0], 1, X_new_scaled.shape[1]))
-    return X_new_scaled
-
-def make_predictions(model, X_new_scaled):
-    return model.predict(X_new_scaled).flatten()
-
-def display_fancy_prediction(predicted_time):
-    st.markdown(
-        f"""
-        <div style="background-color:#4CAF50;padding:20px;border-radius:10px">
-        <h2 style="color:white;text-align:center;">Predicted Waiting Time: {predicted_time:.2f} minutes</h2>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-def visualize_manual_input(user_data, predicted_time):
-    st.subheader("Visualizations")
-    
-    # Create subplots for individual feature visualizations
-    fig = make_subplots(rows=2, cols=3, subplot_titles=list(user_data.columns))
-    
-    for idx, feature in enumerate(user_data.columns):
-        row = idx // 3 + 1
-        col = idx % 3 + 1
-        
-        # Bar plot for each feature
-        fig.add_trace(
-            go.Bar(x=[feature], y=[user_data[feature].values[0]], name=feature),
-            row=row, col=col
-        )
-        
-        # Update y-axis range for better visibility
-        fig.update_yaxes(range=[0, max(user_data[feature].values[0] * 1.2, 1)], row=row, col=col)
-    
-    fig.update_layout(height=600, showlegend=False, title_text="Input Feature Values")
-    st.plotly_chart(fig, use_container_width=True)
-    
-
-def visualize_batch_data(data, predictions, target):
-    st.subheader("Visualizations")
-    
-    # Calculate prediction errors
-    data['Predicted_WaitingTime'] = predictions
-    if target in data.columns:
-        data['Error'] = data[target] - data['Predicted_WaitingTime']
-    
-    # Actual vs Predicted Scatter Plot with Best Fit Line
-    if target in data.columns:
-        fig_scatter = px.scatter(data, x=target, y='Predicted_WaitingTime', trendline="ols")
-        fig_scatter.update_layout(title="Actual vs Predicted Waiting Time", 
-                                  xaxis_title="Actual Waiting Time",
-                                  yaxis_title="Predicted Waiting Time")
-        st.plotly_chart(fig_scatter, use_container_width=True)
-    
-    # Individual feature distributions
-    features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
-    fig_dist = make_subplots(rows=2, cols=3, subplot_titles=features)
-    
-    for idx, feature in enumerate(features):
-        row = idx // 3 + 1
-        col = idx % 3 + 1
-        fig_dist.add_trace(
-            go.Histogram(x=data[feature], name=feature),
-            row=row, col=col
-        )
-    
-    fig_dist.update_layout(height=800, showlegend=False, title_text="Feature Distributions")
-    st.plotly_chart(fig_dist, use_container_width=True)
-    
-    # Individual feature box plots
-    fig_box = make_subplots(rows=2, cols=3, subplot_titles=features)
-    
-    for idx, feature in enumerate(features):
-        row = idx // 3 + 1
-        col = idx % 3 + 1
-        fig_box.add_trace(
-            go.Box(y=data[feature], name=feature),
-            row=row, col=col
-        )
-    
-    fig_box.update_layout(height=800, showlegend=False, title_text="Feature Box Plots")
-    st.plotly_chart(fig_box, use_container_width=True)
-    
-    # Prediction Error Histogram
-    if target in data.columns:
-        fig_error = px.histogram(data, x='Error', nbins=50)
-        fig_error.update_layout(title="Prediction Error Distribution")
-        st.plotly_chart(fig_error, use_container_width=True)
-
 def main():
     # Load model and scaler
     model, scaler = load_model_and_scaler()
@@ -418,7 +412,6 @@ def main():
         else:
             st.info("Please upload a CSV or XLSX file to proceed.")
             
-
     elif page == "Hospital Locator":
         st.header("Hospital Locator")
         col1, col2 = st.columns([1, 2])
@@ -453,7 +446,6 @@ def main():
                         st.warning("""No hospitals found in the area. Try increasing the search radius or using a more specific address.""")
                 else:
                     st.error("Could not find the specified location. Please check the spelling or try a more specific location.")
-
 
 if __name__ == "__main__":
     main()
