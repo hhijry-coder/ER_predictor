@@ -5,7 +5,6 @@ import pickle
 import plotly.express as px
 import plotly.graph_objects as go
 from tensorflow.keras.models import load_model
-import seaborn as sns
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
 import folium
@@ -262,21 +261,26 @@ def display_fancy_prediction(predicted_time):
     )
 
 # Function to plot based on user selection
-def plot_visualization(data, predictions, selected_plot):
+def plot_visualization(data, predictions, selected_plot, selected_variable=None):
     if selected_plot == "Actual vs Predicted":
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=np.arange(len(predictions)), y=data['waitingTime'], mode='lines', name='Actual'))
-        fig.add_trace(go.Scatter(x=np.arange(len(predictions)), y=predictions, mode='lines+markers', name='Predicted'))
-        fig.update_layout(title="Actual vs Predicted Waiting Time", xaxis_title="Instance", yaxis_title="Waiting Time (mins)")
+        fig.add_trace(go.Scatter(x=data['waitingTime'], y=predictions, mode='markers', name='Predicted vs Actual'))
+        fig.update_layout(title="Predicted vs Actual Waiting Time", xaxis_title="Actual Waiting Time", yaxis_title="Predicted Waiting Time")
         st.plotly_chart(fig)
 
     elif selected_plot == "Box Plot":
-        fig = px.box(data, y="waitingTime", title="Box Plot of Waiting Times")
-        st.plotly_chart(fig)
+        if selected_variable:
+            fig = px.box(data, y=selected_variable, title=f"Box Plot of {selected_variable}")
+            st.plotly_chart(fig)
+        else:
+            st.warning("Please select a variable for the box plot.")
 
     elif selected_plot == "Histogram":
-        fig = px.histogram(data, x="waitingTime", title="Histogram of Waiting Times")
-        st.plotly_chart(fig)
+        if selected_variable:
+            fig = px.histogram(data, x=selected_variable, title=f"Histogram of {selected_variable} Frequency")
+            st.plotly_chart(fig)
+        else:
+            st.warning("Please select a variable for the histogram.")
 
 def main():
     st.title("🏥 HajjCare Flow Optimizer")
@@ -326,9 +330,6 @@ def main():
                 predictions = make_predictions(model, X_new_scaled)
                 if predictions is not None:
                     display_fancy_prediction(predictions[0])
-                    st.write("### Select a Plot")
-                    selected_plot = st.selectbox("Choose Plot", ["Actual vs Predicted", "Box Plot", "Histogram"])
-                    plot_visualization(user_data, predictions, selected_plot)
 
         else:
             uploaded_file = st.sidebar.file_uploader("Upload your CSV or XLSX file", type=["csv", "xlsx"])
@@ -351,9 +352,6 @@ def main():
                             st.write("### Predictions")
                             st.write(data[['Predicted_WaitingTime']])
                             display_fancy_prediction(predictions[0])
-                            st.write("### Select a Plot")
-                            selected_plot = st.selectbox("Choose Plot", ["Actual vs Predicted", "Box Plot", "Histogram"])
-                            plot_visualization(data, predictions, selected_plot)
                     else:
                         st.error("Uploaded data does not contain required features.")
 
@@ -390,6 +388,18 @@ def main():
                     st.warning("No hospitals found in the area. Try increasing the search radius or using a more specific address.")
             else:
                 st.error("Could not find the specified location. Please check the spelling or try a more specific location.")
+    
+    # Navigator in Sidebar
+    st.sidebar.header("Visualization Options")
+    selected_plot = st.sidebar.selectbox("Choose Plot", ["Actual vs Predicted", "Box Plot", "Histogram"])
+    selected_variable = None
+    if selected_plot in ["Box Plot", "Histogram"]:
+        selected_variable = st.sidebar.selectbox("Choose a Variable", features)
+
+    # Plot only if predictions exist
+    if "Predicted_WaitingTime" in data.columns:
+        plot_visualization(data, predictions, selected_plot, selected_variable)
+
 
 if __name__ == "__main__":
     main()
