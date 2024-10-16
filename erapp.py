@@ -108,10 +108,16 @@ def visualize_batch_data(data, predictions, target, features):
     if target in data.columns:
         data['Error'] = data[target] - data['Predicted_WaitingTime']
     
+    # Determine the number of rows needed for subplots
+    num_features = len(features)
+    num_rows = 2 + (num_features + 1) // 2  # 2 rows for main plots + rows for features
+
     # Create subplots
-    fig = make_subplots(rows=3, cols=2,
-                        subplot_titles=("Actual vs Predicted", "Prediction Error Distribution", 
-                                        *features))
+    fig = make_subplots(
+        rows=num_rows, 
+        cols=2,
+        subplot_titles=["Actual vs Predicted", "Prediction Error Distribution"] + features
+    )
 
     # Actual vs Predicted Scatter Plot with Best Fit Line
     if target in data.columns:
@@ -140,7 +146,7 @@ def visualize_batch_data(data, predictions, target, features):
         col = (i % 2) + 1
         fig.add_trace(go.Histogram(x=data[feature], name=feature), row=row, col=col)
 
-    fig.update_layout(height=1200, showlegend=False,
+    fig.update_layout(height=300 * num_rows, showlegend=False,
                       title_text="Batch Data Visualizations",
                       template="plotly_white")
     fig.update_xaxes(title_text=target if target in data.columns else "", row=1, col=1)
