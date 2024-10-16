@@ -423,13 +423,14 @@ def main():
             
     elif page == "Hospital Locator":
         st.header("Hospital Locator")
-        col1, col2 = st.columns([1, 2])
-
-        with col1:
-            st.subheader("Input City")
-            city_name = st.text_input("Enter a City Name to View Nearby Hospitals")
+        
+        # Use full width for the input
+        city_name = st.text_input("Enter a City Name to View Nearby Hospitals")
+        
+        if city_name:
+            col1, col2 = st.columns([1, 1])
             
-            if city_name:
+            with col1:
                 with st.spinner("Fetching city coordinates..."):
                     city_coords = get_city_coordinates(city_name)
                     
@@ -440,21 +441,23 @@ def main():
                     if hospitals:
                         st.success(f"Found {len(hospitals)} hospitals near {city_name}")
                         
-                        with st.spinner("Creating map..."):
-                            city_map = display_hospital_map(hospitals, city_coords)
-                            
-                        if city_map is not None:
-                            st_folium(city_map, width=800, height=500)
-                            
-                            with st.expander("View Hospital List"):
-                                for idx, hospital in enumerate(hospitals, 1):
-                                    st.write(f"{idx}. {hospital['name']}")
-                        else:
-                            st.error("Failed to create map. Please try again.")
+                        with st.expander("View Hospital List", expanded=True):
+                            for idx, hospital in enumerate(hospitals, 1):
+                                st.write(f"{idx}. {hospital['name']}")
                     else:
-                        st.warning("""No hospitals found in the area. Try increasing the search radius or using a more specific address.""")
+                        st.warning("No hospitals found in the area. Try increasing the search radius or using a more specific address.")
                 else:
                     st.error("Could not find the specified location. Please check the spelling or try a more specific location.")
+            
+            with col2:
+                if city_coords and is_valid_coordinates(*city_coords) and hospitals:
+                    with st.spinner("Creating map..."):
+                        city_map = display_hospital_map(hospitals, city_coords)
+                        
+                    if city_map is not None:
+                        st_folium(city_map, width=None, height=600)
+                    else:
+                        st.error("Failed to create map. Please try again.")
 
 if __name__ == "__main__":
     main()
