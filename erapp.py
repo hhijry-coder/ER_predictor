@@ -340,7 +340,7 @@ def main():
         return
 
     # Add the app title to the main page
-    st.title("HajjCare Flow Optimizer")
+    st.title("Risk & Flow Management Tabuk")
 
     # Features and target
     features = ['X3', 'hour', 'minutes', 'waitingPeople', 'dayOfWeek', 'serviceTime']
