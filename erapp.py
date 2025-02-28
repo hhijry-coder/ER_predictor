@@ -224,7 +224,7 @@ def get_city_coordinates(city_name):
         st.error(f"Error while geocoding: {str(e)}")
         return None
 
-def get_hospitals_near_city(lat, lon, radius=5000):
+def get_hospitals_near_city(lat, lon, radius=8000):
     overpass_endpoints = [
         "https://overpass-api.de/api/interpreter",
         "https://lz4.overpass-api.de/api/interpreter",
