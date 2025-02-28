@@ -17,7 +17,7 @@ import streamlit as st
 
 # Set page config
 st.set_page_config(
-    page_title="HajjCare Flow Optimizer",
+    page_title="Risk & Flow Management Tabuk",
     page_icon="🏥",
     layout="wide"
 )
