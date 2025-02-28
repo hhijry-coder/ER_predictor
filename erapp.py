@@ -455,7 +455,7 @@ def main():
                         city_map = display_hospital_map(hospitals, city_coords)
                         
                     if city_map is not None:
-                        st_folium(city_map, width=None, height=600)
+                        st_folium(city_map, width=None, height=800)
                     else:
                         st.error("Failed to create map. Please try again.")
 
